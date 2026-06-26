@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
+    <title>Qni GL</title>
+  </head>
+  <body class="m-0">
+    <div id="app" class="relative">
+      <div
+        class="fixed top-0 left-0 z-40 rounded-br-2xl bg-white drop-shadow-xl"
+        id="menu-container"
+      >
+        <div class="relative inline-block h-10 w-10 p-1 text-left">
+          <button
+            aria-label="Menu"
+            type="button"
+            class="inline-flex h-full w-full items-center justify-center rounded-xl text-neutral-700 hover:bg-neutral-200 focus:outline-none"
+            id="menu-button"
+            aria-expanded="false"
+            aria-haspopup="true"
+            aria-controls="menu-dropdown"
+          >
+            <img src="/icons/menu.svg" alt="Menu" class="w-6 h-6" />
+          </button>
+          <div
+            id="menu-dropdown"
+            class="absolute left-0 mt-2 hidden w-56 origin-top-right divide-y divide-neutral-100 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-neutral-300 focus:outline-none"
+            role="menu"
+            aria-orientation="vertical"
+            aria-labelledby="menu-button"
+            tabindex="-1"
+          >
+            <div class="py-1" role="none">
+              <button class="text-neutral-700 block w-full px-4 py-2 text-sm flex items-center hover:bg-neutral-100" role="menuitem" tabindex="-1" id="menu-item-share">
+                <img src="/icons/share.svg" alt="Share" class="w-5 h-5 flex-shrink-0 mr-2" />
+                Share...
+              </button>
+            </div>
+            <div class="py-1" role="none">
+              <button
+                class="text-neutral-700 w-full px-4 py-2 text-sm text-left flex items-center hover:bg-neutral-100"
+                role="menuitem"
+                tabindex="-1"
+                id="quantum-algorithms"
+                type="button"
+                aria-expanded="false"
+                aria-controls="quantum-algorithms"
+              >
+                <img
+                  src="/icons/list.svg"
+                  alt="Quantum Algorithms"
+                  class="w-5 h-5 flex-shrink-0 mr-2"
+                />
+                Quantum Algorithms
+                <img
+                  src="/icons/chevron-down.svg"
+                  class="ml-auto w-4 h-4"
+                  alt="Chevron Down"
+                />
+              </button>
+              <div
+                id="quantum-algorithms-dropdown"
+                class="flex-col gap-1 hidden"
+              >
+                <button
+                  type="button"
+                  class="text-neutral-700 w-full px-4 py-2 text-sm flex items-center hover:bg-neutral-100"
+                  data-algo="chsh"
+                >
+                  Bell state generation
+                </button>
+                <button
+                  type="button"
+                  class="text-neutral-700 w-full px-4 py-2 text-sm flex items-center hover:bg-neutral-100"
+                  data-algo="ghz"
+                >
+                  GHZ state generation
+                </button>
+                <button
+                  type="button"
+                  class="text-neutral-700 w-full px-4 py-2 text-sm flex items-center hover:bg-neutral-100"
+                  data-algo="grover"
+                >
+                  Grover's algorithm
+                </button>
+              </div>
+            </div>
+            <div class="border-t border-neutral-200"></div>
+            <div class="py-1" role="none">
+              <a href="https://qniapp.github.io/qni/" class="text-neutral-700 block px-4 py-2 text-sm flex items-center hover:bg-neutral-100" role="menuitem" tabindex="-1" id="menu-item-tutorial" target="_blank" rel="noopener noreferrer">
+                <img src="/icons/tutorial.svg" alt="Tutorial" class="w-5 h-5 flex-shrink-0 mr-2" />
+                 Tutorial (日本語)
+              </a>
+              <a href="https://github.com/yasuhito/qni-gl" class="text-neutral-700 block px-4 py-2 text-sm flex items-center hover:bg-neutral-100" role="menuitem" tabindex="-1" id="menu-item-github" target="_blank" rel="noopener noreferrer">
+                <img src="/icons/github.svg" alt="GitHub" class="w-5 h-5 flex-shrink-0 mr-2" />
+                 GitHub
+              </a>
+              <a href="https://x.com/qniapp" class="text-neutral-700 block px-4 py-2 text-sm flex items-center hover:bg-neutral-100" role="menuitem" tabindex="-1" id="menu-item-x" target="_blank" rel="noopener noreferrer">
+                <img src="/icons/x.svg" alt="X" class="w-5 h-5 flex-shrink-0 mr-2" />
+                 X
+              </a>
+            </div>
+            <div class="border-t border-neutral-200"></div>
+            <div class="py-1" role="none">
+              <a href="#" class="text-red-500 block px-4 py-2 text-sm flex items-center hover:bg-neutral-100" role="menuitem" tabindex="-1" id="menu-item-clear-circuit">
+                <img src="/icons/trash.svg" alt="Clear circuit" class="w-5 h-5 flex-shrink-0 mr-2" />
+                 Clear circuit
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button
+      id="exportButton"
+      class="absolute top-16 right-10 bg-sky-500 hover:bg-sky-600 active:bg-purple-500 border-2 border-sky-700 hover:border-purple-500 active:border-purple-700 text-white font-semibold h-8 px-1 rounded-sm shadow-2xl active:shadow-none"
+      >
+        Export to QASM
+      </button>
+      <!-- Share Modal will be loaded here by JavaScript -->
+      <div id="share-modal-container"></div>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
