@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1">
+<meta name="generator" content="pdoc3 0.11.5">
+<title>qni.qiskit_circuit_builder API documentation</title>
+<meta name="description" content="Qiskit circuit construction utilities for the Qni simulator …">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/sanitize.min.css" integrity="sha512-y1dtMcuvtTMJc1yPgEqF0ZjQbhnc/bFhyvIyVNb9Zk5mIGtqVaAB1Ttl28su8AvFMOY0EwRbAe+HCLqj6W7/KA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/13.0.0/typography.min.css" integrity="sha512-Y1DYSb995BAfxobCkKepB1BqJJTPrOp3zPL74AWFugHHmmdcvO+C48WLrUOlhGMc0QG7AE3f7gmvvcrmX2fDoA==" crossorigin>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:1.5em;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:2em 0 .50em 0}h3{font-size:1.4em;margin:1.6em 0 .7em 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .2s ease-in-out}a:visited{color:#503}a:hover{color:#b62}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900;font-weight:bold}pre code{font-size:.8em;line-height:1.4em;padding:1em;display:block}code{background:#f3f3f3;font-family:"DejaVu Sans Mono",monospace;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source > summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible;min-width:max-content}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em 1em;margin:1em 0}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul ul{padding-left:1em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => {
+hljs.configure({languages: ['bash', 'css', 'diff', 'graphql', 'ini', 'javascript', 'json', 'plaintext', 'python', 'python-repl', 'rust', 'shell', 'sql', 'typescript', 'xml', 'yaml']});
+hljs.highlightAll();
+/* Collapse source docstrings */
+setTimeout(() => {
+[...document.querySelectorAll('.hljs.language-python > .hljs-string')]
+.filter(el => el.innerHTML.length > 200 && ['"""', "'''"].includes(el.innerHTML.substring(0, 3)))
+.forEach(el => {
+let d = document.createElement('details');
+d.classList.add('hljs-string');
+d.innerHTML = '<summary>"""</summary>' + el.innerHTML.substring(3);
+el.replaceWith(d);
+});
+}, 100);
+})</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>qni.qiskit_circuit_builder</code></h1>
+</header>
+<section id="section-intro">
+<p>Qiskit circuit construction utilities for the Qni simulator.</p>
+<p>Provides builder classes to convert Qni's high-level quantum operations
+into executable Qiskit circuits.</p>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="qni.qiskit_circuit_builder.BasicOperation"><code class="flex name class">
+<span>class <span class="ident">BasicOperation</span></span>
+<span>(</span><span>*args, **kwargs)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class BasicOperation(TypedDict):
+    &#34;&#34;&#34;A dictionary type representing a basic quantum operation.
+
+    Used for single-qubit gates and non-controlled multi-qubit operations.
+
+    Attributes
+    ----------
+        type: The type of quantum operation (e.g., &#34;H&#34;, &#34;X&#34;, &#34;Y&#34;, &#34;Z&#34;, &#34;Swap&#34;)
+        targets: List of target qubit indices the operation acts on
+
+    &#34;&#34;&#34;
+
+    type: str
+    targets: list[int]</code></pre>
+</details>
+<div class="desc"><p>A dictionary type representing a basic quantum operation.</p>
+<p>Used for single-qubit gates and non-controlled multi-qubit operations.</p>
+<h2 id="attributes">Attributes</h2>
+<pre><code>type: The type of quantum operation (e.g., "H", "X", "Y", "Z", "Swap")
+targets: List of target qubit indices the operation acts on
+</code></pre></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>builtins.dict</li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="qni.qiskit_circuit_builder.BasicOperation.targets"><code class="name">var <span class="ident">targets</span> : list[int]</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="qni.qiskit_circuit_builder.BasicOperation.type"><code class="name">var <span class="ident">type</span> : str</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="qni.qiskit_circuit_builder.ControllableOperation"><code class="flex name class">
+<span>class <span class="ident">ControllableOperation</span></span>
+<span>(</span><span>*args, **kwargs)</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class ControllableOperation(TypedDict):
+    &#34;&#34;&#34;A dictionary type representing a controlled quantum operation.
+
+    Used for quantum operations that can be controlled by other qubits.
+
+    Attributes
+    ----------
+        type: The type of quantum operation (e.g., &#34;X&#34;, &#34;Y&#34;, &#34;Z&#34;)
+        targets: List of target qubit indices the operation acts on
+        controls: List of control qubit indices
+
+    &#34;&#34;&#34;
+
+    type: str
+    targets: list[int]
+    controls: list[int]</code></pre>
+</details>
+<div class="desc"><p>A dictionary type representing a controlled quantum operation.</p>
+<p>Used for quantum operations that can be controlled by other qubits.</p>
+<h2 id="attributes">Attributes</h2>
+<pre><code>type: The type of quantum operation (e.g., "X", "Y", "Z")
+targets: List of target qubit indices the operation acts on
+controls: List of control qubit indices
+</code></pre></div>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>builtins.dict</li>
+</ul>
+<h3>Class variables</h3>
+<dl>
+<dt id="qni.qiskit_circuit_builder.ControllableOperation.controls"><code class="name">var <span class="ident">controls</span> : list[int]</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="qni.qiskit_circuit_builder.ControllableOperation.targets"><code class="name">var <span class="ident">targets</span> : list[int]</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+<dt id="qni.qiskit_circuit_builder.ControllableOperation.type"><code class="name">var <span class="ident">type</span> : str</code></dt>
+<dd>
+<div class="desc"></div>
+</dd>
+</dl>
+</dd>
+<dt id="qni.qiskit_circuit_builder.QiskitCircuitBuilder"><code class="flex name class">
+<span>class <span class="ident">QiskitCircuitBuilder</span></span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class QiskitCircuitBuilder:
+    &#34;&#34;&#34;A builder for constructing Qiskit quantum circuits.
+
+    Converts high-level quantum operations into Qiskit circuit instructions.
+    Supports a wide range of quantum gates and operations:
+    - Basic gates (H, X, Y, Z, S, T and conjugates)
+    - Controlled operations (CNOT, controlled-Y, controlled-Z)
+    - State preparation (|0⟩, |1⟩)
+    - Measurement operations
+    - Multi-qubit operations (SWAP)
+
+    Each operation is represented as a dictionary containing the operation type
+    and target qubits, with optional control qubits for controlled operations.
+
+    Attributes
+    ----------
+        _PAIR_OPERATION_COUNT: Constant defining the number of qubits for
+            two-qubit gates
+
+    &#34;&#34;&#34;
+
+    _PAIR_OPERATION_COUNT = 2
+
+    def build_circuit_for_export(
+        self,
+        steps: list,
+        qubit_count: int,
+    ) -&gt; QuantumCircuit:
+        &#34;&#34;&#34;Build a Qiskit quantum circuit for export from a list of quantum operations.
+
+        Constructs a quantum circuit by applying the specified quantum operations
+        in sequence. Each step can contain multiple operations that are applied
+        in parallel.
+
+        Args:
+        ----
+            steps: A list of quantum operations to be applied to the circuit.
+                Each step is a list of operations that can be executed in parallel.
+            qubit_count: The number of qubits in the circuit.
+
+        Returns:
+        -------
+            A Qiskit QuantumCircuit object containing all the specified operations.
+
+        &#34;&#34;&#34;
+        circuit = QuantumCircuit(qubit_count)
+
+        for step in steps:
+            if len(step) == 0:
+                circuit.id(list(range(qubit_count)))
+
+            for operation in step:
+                self.apply_operation(circuit, operation)
+
+        return circuit
+
+    def apply_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        &#34;&#34;&#34;Apply a quantum operation to the given circuit.
+
+        Takes a quantum operation specified as a dictionary and applies it to
+        the circuit. Supports both basic operations (single-qubit gates,
+        multi-qubit gates) and controlled operations.
+
+        Args:
+        ----
+            circuit: The Qiskit quantum circuit to apply the operation to.
+            operation: A dictionary describing the quantum operation to apply.
+                Can be either a BasicOperation or ControllableOperation.
+
+        &#34;&#34;&#34;
+        operation_type = operation[&#34;type&#34;]
+        operation_methods: dict[str, OperationMethod] = {
+            &#34;H&#34;: self._apply_h_operation,
+            &#34;X&#34;: self._apply_x_operation,
+            &#34;Y&#34;: self._apply_y_operation,
+            &#34;Z&#34;: self._apply_z_operation,
+            &#34;X^½&#34;: self._apply_rnot_operation,
+            &#34;S&#34;: self._apply_s_operation,
+            &#34;S†&#34;: self._apply_s_dagger_operation,
+            &#34;T&#34;: self._apply_t_operation,
+            &#34;T†&#34;: self._apply_t_dagger_operation,
+            &#34;Swap&#34;: self._apply_swap_operation,
+            &#34;•&#34;: self._apply_controlled_z_operation,
+            &#34;|0&gt;&#34;: self._apply_write0,
+            &#34;|1&gt;&#34;: self._apply_write1,
+            &#34;Measure&#34;: self._apply_measure_operation,
+        }
+
+        if operation_type in operation_methods:
+            operation_methods[operation_type](circuit, operation)
+        else:
+            raise self.UnknownOperationError(operation_type)
+
+    class UnknownOperationError(ValueError):
+        &#34;&#34;&#34;Exception raised when an unknown operation type is encountered.
+
+        Attributes
+        ----------
+            operation_type: The type of the unknown operation
+
+        &#34;&#34;&#34;
+
+        def __init__(self, operation_type: str) -&gt; None:
+            &#34;&#34;&#34;Initialize UnknownOperationError with the unknown operation type.
+
+            Args:
+            ----
+                operation_type (str): The type of the unknown operation that
+                    caused the error.
+
+            &#34;&#34;&#34;
+            super().__init__(f&#34;Unknown operation: {operation_type}&#34;)
+
+    def _apply_h_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, HGate())
+        else:
+            circuit.h(operation[&#34;targets&#34;])
+
+    @staticmethod
+    def _apply_x_operation(
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            operation = cast(&#34;ControllableOperation&#34;, operation)
+            for target in operation[&#34;targets&#34;]:
+                circuit.mcx(operation[&#34;controls&#34;], target)
+        else:
+            circuit.x(operation[&#34;targets&#34;])
+
+    def _apply_y_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, YGate())
+        else:
+            circuit.y(operation[&#34;targets&#34;])
+
+    def _apply_z_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, ZGate())
+        else:
+            circuit.z(operation[&#34;targets&#34;])
+
+    def _apply_rnot_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, XGate().power(1 / 2))
+        else:
+            circuit.append(XGate().power(1 / 2), qargs=operation[&#34;targets&#34;])
+
+    def _apply_s_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, SGate())
+        else:
+            circuit.s(operation[&#34;targets&#34;])
+
+    def _apply_s_dagger_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, SdgGate())
+        else:
+            circuit.sdg(operation[&#34;targets&#34;])
+
+    def _apply_t_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, TGate())
+        else:
+            circuit.t(operation[&#34;targets&#34;])
+
+    def _apply_t_dagger_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -&gt; None:
+        if &#34;controls&#34; in operation:
+            self._apply_controlled_u(circuit, operation, TdgGate())
+        else:
+            circuit.tdg(operation[&#34;targets&#34;])
+
+    def _apply_swap_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation,
+    ) -&gt; None:
+        if len(operation[&#34;targets&#34;]) == self._PAIR_OPERATION_COUNT:
+            circuit.swap(operation[&#34;targets&#34;][0], operation[&#34;targets&#34;][1])
+        else:
+            circuit.id(operation[&#34;targets&#34;])
+
+    def _apply_controlled_z_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation,
+    ) -&gt; None:
+        if len(operation[&#34;targets&#34;]) &gt;= self._PAIR_OPERATION_COUNT:
+            u = ZGate().control(num_ctrl_qubits=len(operation[&#34;targets&#34;]) - 1)
+            circuit.append(u, qargs=operation[&#34;targets&#34;])
+        else:
+            circuit.id(operation[&#34;targets&#34;])
+
+    @staticmethod
+    def _apply_write0(circuit: QuantumCircuit, operation: BasicOperation) -&gt; None:
+        circuit.reset(operation[&#34;targets&#34;])
+
+    @staticmethod
+    def _apply_write1(circuit: QuantumCircuit, operation: BasicOperation) -&gt; None:
+        circuit.reset(operation[&#34;targets&#34;])
+        circuit.x(operation[&#34;targets&#34;])
+
+    @staticmethod
+    def _apply_measure_operation(
+        circuit: QuantumCircuit,
+        operation: BasicOperation,
+    ) -&gt; None:
+        creg = ClassicalRegister(circuit.num_qubits)
+        circuit.add_register(creg)
+        for target in operation[&#34;targets&#34;]:
+            circuit.measure(target, creg[target])
+
+    @staticmethod
+    def _apply_controlled_u(
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+        gate: ControlledGate,
+    ) -&gt; None:
+        operation = cast(&#34;ControllableOperation&#34;, operation)
+        u = gate.control(num_ctrl_qubits=len(operation[&#34;controls&#34;]))
+        for target in operation[&#34;targets&#34;]:
+            circuit.append(u, qargs=operation[&#34;controls&#34;] + [target])</code></pre>
+</details>
+<div class="desc"><p>A builder for constructing Qiskit quantum circuits.</p>
+<p>Converts high-level quantum operations into Qiskit circuit instructions.
+Supports a wide range of quantum gates and operations:
+- Basic gates (H, X, Y, Z, S, T and conjugates)
+- Controlled operations (CNOT, controlled-Y, controlled-Z)
+- State preparation (|0⟩, |1⟩)
+- Measurement operations
+- Multi-qubit operations (SWAP)</p>
+<p>Each operation is represented as a dictionary containing the operation type
+and target qubits, with optional control qubits for controlled operations.</p>
+<h2 id="attributes">Attributes</h2>
+<pre><code>_PAIR_OPERATION_COUNT: Constant defining the number of qubits for
+    two-qubit gates
+</code></pre></div>
+<h3>Class variables</h3>
+<dl>
+<dt id="qni.qiskit_circuit_builder.QiskitCircuitBuilder.UnknownOperationError"><code class="name">var <span class="ident">UnknownOperationError</span></code></dt>
+<dd>
+<div class="desc"><p>Exception raised when an unknown operation type is encountered.</p>
+<h2 id="attributes">Attributes</h2>
+<pre><code>operation_type: The type of the unknown operation
+</code></pre></div>
+</dd>
+</dl>
+<h3>Methods</h3>
+<dl>
+<dt id="qni.qiskit_circuit_builder.QiskitCircuitBuilder.apply_operation"><code class="name flex">
+<span>def <span class="ident">apply_operation</span></span>(<span>self,<br>circuit: QuantumCircuit,<br>operation: <a title="qni.qiskit_circuit_builder.BasicOperation" href="#qni.qiskit_circuit_builder.BasicOperation">BasicOperation</a> | <a title="qni.qiskit_circuit_builder.ControllableOperation" href="#qni.qiskit_circuit_builder.ControllableOperation">ControllableOperation</a>) ‑> None</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def apply_operation(
+    self,
+    circuit: QuantumCircuit,
+    operation: BasicOperation | ControllableOperation,
+) -&gt; None:
+    &#34;&#34;&#34;Apply a quantum operation to the given circuit.
+
+    Takes a quantum operation specified as a dictionary and applies it to
+    the circuit. Supports both basic operations (single-qubit gates,
+    multi-qubit gates) and controlled operations.
+
+    Args:
+    ----
+        circuit: The Qiskit quantum circuit to apply the operation to.
+        operation: A dictionary describing the quantum operation to apply.
+            Can be either a BasicOperation or ControllableOperation.
+
+    &#34;&#34;&#34;
+    operation_type = operation[&#34;type&#34;]
+    operation_methods: dict[str, OperationMethod] = {
+        &#34;H&#34;: self._apply_h_operation,
+        &#34;X&#34;: self._apply_x_operation,
+        &#34;Y&#34;: self._apply_y_operation,
+        &#34;Z&#34;: self._apply_z_operation,
+        &#34;X^½&#34;: self._apply_rnot_operation,
+        &#34;S&#34;: self._apply_s_operation,
+        &#34;S†&#34;: self._apply_s_dagger_operation,
+        &#34;T&#34;: self._apply_t_operation,
+        &#34;T†&#34;: self._apply_t_dagger_operation,
+        &#34;Swap&#34;: self._apply_swap_operation,
+        &#34;•&#34;: self._apply_controlled_z_operation,
+        &#34;|0&gt;&#34;: self._apply_write0,
+        &#34;|1&gt;&#34;: self._apply_write1,
+        &#34;Measure&#34;: self._apply_measure_operation,
+    }
+
+    if operation_type in operation_methods:
+        operation_methods[operation_type](circuit, operation)
+    else:
+        raise self.UnknownOperationError(operation_type)</code></pre>
+</details>
+<div class="desc"><p>Apply a quantum operation to the given circuit.</p>
+<p>Takes a quantum operation specified as a dictionary and applies it to
+the circuit. Supports both basic operations (single-qubit gates,
+multi-qubit gates) and controlled operations.</p>
+<h2 id="args">Args:</h2>
+<pre><code>circuit: The Qiskit quantum circuit to apply the operation to.
+operation: A dictionary describing the quantum operation to apply.
+    Can be either a BasicOperation or ControllableOperation.
+</code></pre></div>
+</dd>
+<dt id="qni.qiskit_circuit_builder.QiskitCircuitBuilder.build_circuit_for_export"><code class="name flex">
+<span>def <span class="ident">build_circuit_for_export</span></span>(<span>self, steps: list, qubit_count: int) ‑> qiskit.circuit.quantumcircuit.QuantumCircuit</span>
+</code></dt>
+<dd>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def build_circuit_for_export(
+    self,
+    steps: list,
+    qubit_count: int,
+) -&gt; QuantumCircuit:
+    &#34;&#34;&#34;Build a Qiskit quantum circuit for export from a list of quantum operations.
+
+    Constructs a quantum circuit by applying the specified quantum operations
+    in sequence. Each step can contain multiple operations that are applied
+    in parallel.
+
+    Args:
+    ----
+        steps: A list of quantum operations to be applied to the circuit.
+            Each step is a list of operations that can be executed in parallel.
+        qubit_count: The number of qubits in the circuit.
+
+    Returns:
+    -------
+        A Qiskit QuantumCircuit object containing all the specified operations.
+
+    &#34;&#34;&#34;
+    circuit = QuantumCircuit(qubit_count)
+
+    for step in steps:
+        if len(step) == 0:
+            circuit.id(list(range(qubit_count)))
+
+        for operation in step:
+            self.apply_operation(circuit, operation)
+
+    return circuit</code></pre>
+</details>
+<div class="desc"><p>Build a Qiskit quantum circuit for export from a list of quantum operations.</p>
+<p>Constructs a quantum circuit by applying the specified quantum operations
+in sequence. Each step can contain multiple operations that are applied
+in parallel.</p>
+<h2 id="args">Args:</h2>
+<pre><code>steps: A list of quantum operations to be applied to the circuit.
+    Each step is a list of operations that can be executed in parallel.
+qubit_count: The number of qubits in the circuit.
+</code></pre>
+<h2 id="returns">Returns:</h2>
+<pre><code>A Qiskit QuantumCircuit object containing all the specified operations.
+</code></pre></div>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="qni" href="index.html">qni</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="qni.qiskit_circuit_builder.BasicOperation" href="#qni.qiskit_circuit_builder.BasicOperation">BasicOperation</a></code></h4>
+<ul class="">
+<li><code><a title="qni.qiskit_circuit_builder.BasicOperation.targets" href="#qni.qiskit_circuit_builder.BasicOperation.targets">targets</a></code></li>
+<li><code><a title="qni.qiskit_circuit_builder.BasicOperation.type" href="#qni.qiskit_circuit_builder.BasicOperation.type">type</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="qni.qiskit_circuit_builder.ControllableOperation" href="#qni.qiskit_circuit_builder.ControllableOperation">ControllableOperation</a></code></h4>
+<ul class="">
+<li><code><a title="qni.qiskit_circuit_builder.ControllableOperation.controls" href="#qni.qiskit_circuit_builder.ControllableOperation.controls">controls</a></code></li>
+<li><code><a title="qni.qiskit_circuit_builder.ControllableOperation.targets" href="#qni.qiskit_circuit_builder.ControllableOperation.targets">targets</a></code></li>
+<li><code><a title="qni.qiskit_circuit_builder.ControllableOperation.type" href="#qni.qiskit_circuit_builder.ControllableOperation.type">type</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="qni.qiskit_circuit_builder.QiskitCircuitBuilder" href="#qni.qiskit_circuit_builder.QiskitCircuitBuilder">QiskitCircuitBuilder</a></code></h4>
+<ul class="">
+<li><code><a title="qni.qiskit_circuit_builder.QiskitCircuitBuilder.UnknownOperationError" href="#qni.qiskit_circuit_builder.QiskitCircuitBuilder.UnknownOperationError">UnknownOperationError</a></code></li>
+<li><code><a title="qni.qiskit_circuit_builder.QiskitCircuitBuilder.apply_operation" href="#qni.qiskit_circuit_builder.QiskitCircuitBuilder.apply_operation">apply_operation</a></code></li>
+<li><code><a title="qni.qiskit_circuit_builder.QiskitCircuitBuilder.build_circuit_for_export" href="#qni.qiskit_circuit_builder.QiskitCircuitBuilder.build_circuit_for_export">build_circuit_for_export</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.11.5</a>.</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,85 @@
+[project]
+name = "qni"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "../LICENSE" }
+keywords = []
+authors = [
+  { name = "Yasuhito Takamiya", email = "yasuhito@hey.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "qiskit>=1.2.1",
+  "qiskit-aer>=0.15.0", # If you want to use GPU, change to "qiskit-aer-gpu>=0.15.0"
+  "flask-cors>=5.0.0",
+  "gunicorn>=23.0.0",
+  "numpy>=1.26.0"
+]
+
+[project.urls]
+Documentation = "https://github.com/yasuhito/qni#readme"
+Issues = "https://github.com/yasuhito/qni/issues"
+Source = "https://github.com/yasuhito/qni"
+
+[tool.uv]
+dev-dependencies = [
+  "ruff>=0.9.6",
+  "pytest>=8.3.4",
+  "coverage>=7.6.12",
+  "mypy>=1.15.0",
+  "types-flask-cors",
+  "pdoc3>=0.11.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+preview = true
+include = [
+  "src/**/*.py",
+  "tests/**/*.py",
+]
+lint.select = ["ALL"]
+lint.ignore = [
+  "CPY001",
+  "D203",
+  "D213",
+  "COM812",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "ANN001",
+  "ANN201",
+  "ANN205",
+  "ANN401",
+  "CPY001",
+  "D",
+  "D101",
+  "D200",
+  "PLC1901",
+  "PLR2004",
+  "PLR6301",
+  "S101",
+  "PT011",
+  "PGH003",
+]
+
+[tool.mypy]
+files = ["src", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --cov-report=xml"
+pythonpath = "src"
