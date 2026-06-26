@@ -1,0 +1,23 @@
+{
+  "name": "qni",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && uv run gunicorn",
+    "dev:frontend": "cd frontend && yarn dev",
+    "dev": "concurrently \"yarn dev:backend\" \"yarn dev:frontend\"",
+    "test:backend": "cd backend && uv run coverage run -m pytest",
+    "test:frontend": "cd frontend && yarn test",
+    "test": "npm run test:backend && npm run test:frontend",
+    "coverage:backend": "cd backend && uv run coverage html",
+    "lint:backend": "cd backend && uv run ruff check . && uv run ruff format .",
+    "lint:frontend": "cd frontend && yarn lint",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "doc:backend": "cd backend && PYTHONPATH=src uv run pdoc qni --html --output-dir docs/ --force",
+    "doc:frontend": "cd frontend && yarn doc",
+    "doc": "npm run doc:backend && npm run doc:frontend"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "packageManager": "yarn@4.4.1"
+}

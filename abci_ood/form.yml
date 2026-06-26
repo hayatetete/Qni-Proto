@@ -1,0 +1,27 @@
+# Batch Connect Qni app configuration file
+---
+cluster: "abci_V"
+
+attributes:
+  modules: "singularitypro"
+
+  singularity_image:
+    widget: "text_field"
+    label: "Singularity Image Path"
+    required: true
+
+  resource_type:
+    widget: "text_field"
+    label: "Resource Type"
+    required: true
+
+  abci_group:
+    widget: "text_field"
+    label: "ABCI Group"
+    required: true
+
+form:
+  - modules
+  - resource_type
+  - abci_group
+  - singularity_image

@@ -1,0 +1,88 @@
+{
+  "cases": [
+        {
+      "name": "example-00-select-frame-only",
+      "description": "example / 選択枠だけ / Iゲート位置に選択枠だけを表示する",
+      "input": "{\"cols\":[[1]]}",
+      "select": [[0, 0]],
+      "output": "example-00-select-frame-only.svg"
+    },
+    {
+      "name": "example-01-no-option",
+      "description": "example / オプションなし / URL末尾のエンコードJSONからSVGを生成する",
+      "input": "https://qniapp.net/%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "output": "example-01-no-option.svg"
+    },
+    {
+      "name": "example-02-select-single",
+      "description": "example / --select 単一指定 / Hゲートを選択表示する",
+      "input": "https://qniapp.net/%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "select": [[0, 0]],
+      "output": "example-02-select-single.svg"
+    },
+    {
+      "name": "example-03-select-multiple",
+      "description": "example / --select 複数指定 / CNOTのcontrolとXを選択表示する",
+      "input": "https://qniapp.net/%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "select": [[1, 0], [1, 1]],
+      "output": "example-03-select-multiple.svg"
+    },
+    {
+      "name": "example-04-paste-single",
+      "description": "example / --paste 単一指定 / Hゲートを貼り付け位置として表示する",
+      "input": "https://qniapp.net/%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "paste": [[0, 0]],
+      "output": "example-04-paste-single.svg"
+    },
+    {
+      "name": "example-05-paste-multiple",
+      "description": "example / --paste 複数指定 / CNOTのcontrolとXを貼り付け位置として表示する",
+      "input": "https://qniapp.net/%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "paste": [[1, 0], [1, 1]],
+      "output": "example-05-paste-multiple.svg"
+    },
+    {
+      "name": "example-06-select-and-paste",
+      "description": "example / --select と --paste の併用 / 選択元と貼り付け位置を同時表示する",
+      "input": "https://qniapp.net/%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "select": [[0, 0]],
+      "paste": [[1, 1]],
+      "output": "example-06-select-and-paste.svg"
+    },
+    {
+      "name": "example-07-cnot-wire-selected",
+      "description": "example / CNOT接続線選択 / controlとXの間にあるIゲート位置に選択枠を表示する",
+      "input": "{\"cols\":[[\"•\",1,\"X\"]]}",
+      "select": [[0, 1]],
+      "output": "example-07-cnot-wire-selected.svg"
+    },
+    {
+      "name": "example-08-input-raw-json",
+      "description": "example / 生JSON入力 / 同じ回路を生JSONで指定する",
+      "input": "{\"cols\":[[\"H\"],[\"•\",\"X\"]]}",
+      "select": [[1, 0], [1, 1]],
+      "output": "example-08-input-raw-json.svg"
+    },
+    {
+      "name": "example-09-input-url-encoded-json",
+      "description": "example / URLエンコードJSON入力 / 同じ回路をエンコードJSONで指定する",
+      "input": "%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "select": [[1, 0], [1, 1]],
+      "output": "example-09-input-url-encoded-json.svg"
+    },
+    {
+      "name": "example-10-input-fragment-url",
+      "description": "example / #circuit= URL入力 / 同じ回路をfragment URLで指定する",
+      "input": "http://localhost:5173/#circuit=%7B%22cols%22%3A%5B%5B%22H%22%5D%2C%5B%22%E2%80%A2%22%2C%22X%22%5D%5D%7D",
+      "select": [[1, 0], [1, 1]],
+      "output": "example-10-input-fragment-url.svg"
+    },
+    {
+      "name": "example-11-input-circuit-param",
+      "description": "example / circuit=... 入力 / 同じ回路をcircuitパラメータ形式で指定する",
+      "input": "circuit={\"cols\":[[\"H\"],[\"•\",\"X\"]]}",
+      "select": [[1, 0], [1, 1]],
+      "output": "example-11-input-circuit-param.svg"
+    }
+  ]
+}

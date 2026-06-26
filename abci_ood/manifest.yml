@@ -1,0 +1,7 @@
+---
+name: Qni
+category: Interactive Apps
+subcategory: Servers
+role: batch_connect
+description: |
+  This app will launch a Qni server on one or more nodes.

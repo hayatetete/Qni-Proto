@@ -1,0 +1,20 @@
+Bootstrap: docker
+From: node:lts
+
+%environment
+    export NODE_PATH=/opt/qni-gl-main/node_modules:$NODE_PATH
+
+%post
+    # set timezone
+    ln -sf /usr/share/zoneinfo/Asia/Tokyo /etc/localtime
+
+    cd /opt
+    curl -LO https://github.com/yasuhito/qni-gl/archive/refs/heads/main.tar.gz 
+    tar xf main.tar.gz
+    cd qni-gl-main && yarn && yarn build
+
+    rm -f /opt/main.tar.gz
+
+%runscript
+    cd /opt/qni-gl-main
+    yarn dev "$@"
