@@ -20,6 +20,9 @@ export interface SerializedGate {
   type: string;
   targets: number[];
   controls?: number[];
+  antiControls?: number[];
+  angle?: string;
+  span?: number;
 }
 
 export type GateShapeConfig = {
@@ -42,4 +45,7 @@ export type SerializedOperation = {
   type: string;
   targets: number[];
   controls?: number[];
+  antiControls?: number[];
+  angle?: string;
+  span?: number;
 };

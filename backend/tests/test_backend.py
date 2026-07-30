@@ -1,7 +1,7 @@
 import json
 from math import sqrt
 
-from qni.backend import app
+from qni.backend import app, editor_drafts
 from tests.conftest import assert_amplitudes_approx
 
 
@@ -52,3 +52,21 @@ def test_post_simple_circuit_no_amplitude_indices():
         res[0]["amplitudes"],
         {"0": [1 / sqrt(2), 0], "1": [1 / sqrt(2), 0], "2": [0, 0], "3": [0, 0.0]},
     )
+
+
+def test_editor_draft_round_trip():
+    editor_drafts.clear()
+    payload = {
+        "steps": [[{"type": "H", "targets": [0]}]],
+        "qubit_count": 2,
+        "code": "circuit = object()",
+        "warnings": [],
+        "dirty": True,
+    }
+
+    saved = app.test_client().put("/editor-drafts/session-1", json=payload)
+    loaded = app.test_client().get("/editor-drafts/session-1")
+
+    assert saved.status_code == 200
+    assert loaded.status_code == 200
+    assert loaded.get_json() == payload

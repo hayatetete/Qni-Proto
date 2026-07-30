@@ -32,6 +32,45 @@ CORS(app)
 
 setup_custom_logger()
 cached_qiskit_runner = CachedQiskitRunner(app.logger)
+editor_drafts: dict[str, dict] = {}
+
+
+@app.route("/editor-drafts/<draft_id>", methods=["GET", "PUT", "DELETE"])
+def editor_draft(draft_id: str) -> tuple[Response, int]:
+    """Store and retrieve the latest circuit from one Qni editor session."""
+    if request.method == "DELETE":
+        editor_drafts.pop(draft_id, None)
+        return jsonify({"ok": True}), 200
+
+    if request.method == "GET":
+        draft = editor_drafts.get(draft_id)
+        if draft is None:
+            return jsonify({"error": "Editor draft not found"}), 404
+        return jsonify(draft), 200
+
+    payload = request.get_json(silent=True) or {}
+    steps = payload.get("steps")
+    qubit_count = payload.get("qubit_count")
+    code = payload.get("code")
+    warnings = payload.get("warnings", [])
+    if (
+        not isinstance(steps, list)
+        or not isinstance(qubit_count, int)
+        or qubit_count < 1
+        or not isinstance(code, str)
+        or not isinstance(warnings, list)
+        or not all(isinstance(warning, str) for warning in warnings)
+    ):
+        return jsonify({"error": "Invalid editor draft"}), 400
+
+    editor_drafts[draft_id] = {
+        "steps": steps,
+        "qubit_count": qubit_count,
+        "code": code,
+        "warnings": warnings,
+        "dirty": bool(payload.get("dirty", False)),
+    }
+    return jsonify({"ok": True}), 200
 
 
 @app.route("/backend.json", methods=["POST"])
@@ -177,15 +216,20 @@ def _convert_qiskit_step_result(
     circuit_request_data: CircuitRequestData,
 ) -> StepResult:
     measured_bits = qiskit_step_result["measuredBits"]
+    bloch_vectors = qiskit_step_result.get("blochVectors", {})
 
     amplitudes_qiskit = qiskit_step_result.get("amplitudes", None)
     if amplitudes_qiskit is None:
-        return {"measuredBits": measured_bits}
+        return {"measuredBits": measured_bits, "blochVectors": bloch_vectors}
 
     amplitudes = _flatten_amplitudes(
         _filter_amplitudes(amplitudes_qiskit, circuit_request_data.amplitude_indices),
     )
-    return {"amplitudes": amplitudes, "measuredBits": measured_bits}
+    return {
+        "amplitudes": amplitudes,
+        "measuredBits": measured_bits,
+        "blochVectors": bloch_vectors,
+    }
 
 
 def _filter_amplitudes(

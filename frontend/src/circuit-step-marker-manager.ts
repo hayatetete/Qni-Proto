@@ -1,4 +1,10 @@
-import { ColorSource, Container, Graphics } from "pixi.js";
+import {
+  ColorSource,
+  Container,
+  FederatedPointerEvent,
+  Graphics,
+  Rectangle,
+} from "pixi.js";
 import { Colors, FULL_OPACITY, NO_OPACITY } from "./colors";
 import { spacingInPx } from "./util";
 import { CircuitStep } from "./circuit-step";
@@ -39,7 +45,7 @@ export class CircuitStepMarkerManager extends Container {
 
   private initMarkers() {
     for (let i = 0; i < this.stepCount; i++) {
-      const marker = new Graphics();
+      const marker = this.createMarker(i);
       this.addChild(marker);
       this.markers.push(marker);
     }
@@ -50,7 +56,24 @@ export class CircuitStepMarkerManager extends Container {
   private updateMarkerPositions() {
     this.markers.forEach((marker, index) => {
       marker.position.x = this.markerXPosition(index);
+      marker.hitArea = new Rectangle(
+        -CircuitStepMarkerManager.MARKER_WIDTH,
+        0,
+        CircuitStepMarkerManager.MARKER_WIDTH * 2,
+        this.stepHeight,
+      );
     });
+  }
+
+  private createMarker(index: number): Graphics {
+    const marker = new Graphics();
+    marker.eventMode = "static";
+    marker.cursor = "pointer";
+    marker.on("pointerdown", (event: FederatedPointerEvent) => {
+      event.stopPropagation();
+      this.stepAt(index).activate();
+    });
+    return marker;
   }
 
   private markerXPosition(index: number): number {
@@ -123,7 +146,7 @@ export class CircuitStepMarkerManager extends Container {
 
     if (markerCount < stepCount) {
       for (let i = markerCount; i < stepCount; i++) {
-        const marker = new Graphics();
+        const marker = this.createMarker(i);
         this.addChild(marker);
         this.markers.push(marker);
       }

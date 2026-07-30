@@ -4,8 +4,12 @@ import { QubitCircle } from "./qubit-circle";
 import { QubitCircleManager } from "./qubit-circle-manager";
 import { QubitCount } from "./types";
 import { STATE_VECTOR_EVENTS } from "./state-vector-events";
-import { StateVectorLayout } from "./state-vector-layout";
+import { StateVectorAspectIndex, StateVectorLayout } from "./state-vector-layout";
 import { logger } from "./util";
+
+type AmplitudeMap = {
+  [key: number]: [number, number];
+};
 
 export class StateVectorRenderer {
   private layout: StateVectorLayout;
@@ -15,6 +19,8 @@ export class StateVectorRenderer {
   private currentViewport: Rectangle;
   private visibleQubitCirclesStartIndexX: number = 0;
   private visibleQubitCirclesStartIndexY: number = 0;
+  private aggregateStride = 1;
+  private displayScale = 1;
 
   constructor(
     container: Container,
@@ -67,7 +73,33 @@ export class StateVectorRenderer {
     this.layout.qubitCount = qubitCount;
     this.visibleQubitCirclesStartIndexX = 0;
     this.visibleQubitCirclesStartIndexY = 0;
+    this.aggregateStride = this.layout.aggregateStride(this.displayScale);
     this.qubitCircleManager.resizeAllQubitCircles(this.layout.qubitCircleSize);
+  }
+
+  setAspectIndex(aspectIndex: StateVectorAspectIndex): void {
+    this.layout.aspectIndex = aspectIndex;
+    this.visibleQubitCirclesStartIndexX = 0;
+    this.visibleQubitCirclesStartIndexY = 0;
+    this.aggregateStride = this.layout.aggregateStride(this.displayScale);
+    this.qubitCircleManager.resizeAllQubitCircles(this.layout.qubitCircleSize);
+  }
+
+  setDisplayScale(scale: number): boolean {
+    this.displayScale = Math.max(0.01, scale);
+    this.qubitCircleManager.setDisplayScale(this.displayScale);
+    const nextStride = this.layout.aggregateStride(this.displayScale);
+    if (nextStride === this.aggregateStride) {
+      return false;
+    }
+
+    this.aggregateStride = nextStride;
+    this.draw();
+    return true;
+  }
+
+  updateAmplitudes(amplitudes: AmplitudeMap): void {
+    this.qubitCircleManager.updateAmplitudes(amplitudes);
   }
 
   setViewport(viewport: Rectangle): boolean {
@@ -75,8 +107,14 @@ export class StateVectorRenderer {
       this.layout.visibleQubitCirclesStartIndex(viewport.x);
     const newVisibleQubitCirclesStartIndexY =
       this.layout.visibleQubitCirclesStartIndex(viewport.y);
+    const viewportChanged =
+      viewport.x !== this.currentViewport.x ||
+      viewport.y !== this.currentViewport.y ||
+      viewport.width !== this.currentViewport.width ||
+      viewport.height !== this.currentViewport.height;
 
     if (
+      viewportChanged ||
       newVisibleQubitCirclesStartIndexX !==
         this.visibleQubitCirclesStartIndexX ||
       newVisibleQubitCirclesStartIndexY !== this.visibleQubitCirclesStartIndexY

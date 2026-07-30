@@ -1,7 +1,15 @@
+import { AntiControlGate } from "./anti-control-gate";
+import { BlochSphere } from "./bloch-sphere";
 import { ControlGate } from "./control-gate";
 import { HGate } from "./h-gate";
 import { MeasurementGate } from "./measurement-gate";
+import { PhaseGate } from "./phase-gate";
+import { QftDaggerGate } from "./qft-dagger-gate";
+import { QftGate } from "./qft-gate";
 import { RnotGate } from "./rnot-gate";
+import { RxGate } from "./rx-gate";
+import { RyGate } from "./ry-gate";
+import { RzGate } from "./rz-gate";
 import { SDaggerGate } from "./s-dagger-gate";
 import { SGate } from "./s-gate";
 import { SwapGate } from "./swap-gate";
@@ -23,11 +31,19 @@ export type OperationClass =
   | typeof SDaggerGate
   | typeof TGate
   | typeof TDaggerGate
+  | typeof PhaseGate
+  | typeof RxGate
+  | typeof RyGate
+  | typeof RzGate
   | typeof SwapGate
   | typeof ControlGate
+  | typeof AntiControlGate
   | typeof Write0Gate
   | typeof Write1Gate
-  | typeof MeasurementGate;
+  | typeof MeasurementGate
+  | typeof BlochSphere
+  | typeof QftGate
+  | typeof QftDaggerGate;
 
 export type Operation =
   | HGate
@@ -39,8 +55,16 @@ export type Operation =
   | SDaggerGate
   | TGate
   | TDaggerGate
+  | PhaseGate
+  | RxGate
+  | RyGate
+  | RzGate
   | SwapGate
   | ControlGate
+  | AntiControlGate
   | Write0Gate
   | Write1Gate
-  | MeasurementGate;
+  | MeasurementGate
+  | BlochSphere
+  | QftGate
+  | QftDaggerGate;

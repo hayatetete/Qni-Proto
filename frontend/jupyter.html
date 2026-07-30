@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
+    <script>
+      (() => {
+        const rawState = new URLSearchParams(location.search).get("state");
+        if (!rawState) return;
+
+        try {
+          const view = JSON.parse(rawState).view;
+          if (view === "state" || view === "circuit") {
+            document.documentElement.dataset.qniViewMode = view;
+            document.documentElement.style.setProperty(
+              "--qni-jupyter-menu-display",
+              "none",
+            );
+          }
+        } catch {
+          // The TypeScript bridge reports invalid state after the app loads.
+        }
+      })();
+    </script>
+    <title>Qni GL Jupyter</title>
+  </head>
+  <body class="m-0 overflow-hidden">
+    <div id="app" class="relative">
+      <div
+        class="fixed top-0 left-0 right-0 z-40 flex min-h-11 items-center gap-1 border-b border-gray-300 bg-white px-2 py-1"
+        id="menu-container"
+      >
+        <div class="relative">
+          <button
+            class="inline-flex h-8 items-center gap-1 rounded-sm border border-gray-300 bg-neutral-100 px-2 text-sm font-semibold text-neutral-800 hover:border-purple-500 hover:bg-neutral-200"
+            id="quantum-algorithms"
+            type="button"
+            aria-expanded="false"
+            aria-controls="quantum-algorithms-dropdown"
+          >
+            <img src="/icons/list.svg" alt="" class="h-4 w-4" />
+            Algorithms
+            <img src="/icons/chevron-down.svg" class="h-3 w-3" alt="" />
+          </button>
+          <div
+            id="quantum-algorithms-dropdown"
+            class="absolute left-0 top-10 z-50 hidden w-56 overflow-hidden rounded-sm border border-gray-300 bg-white"
+          >
+            <button type="button" class="flex w-full px-3 py-2 text-left text-sm hover:bg-neutral-100" data-algo="chsh">Bell state generation</button>
+            <button type="button" class="flex w-full px-3 py-2 text-left text-sm hover:bg-neutral-100" data-algo="ghz">GHZ state generation</button>
+            <button type="button" class="flex w-full px-3 py-2 text-left text-sm hover:bg-neutral-100" data-algo="grover">Grover's algorithm</button>
+          </div>
+        </div>
+        <button
+          class="ml-auto inline-flex h-8 items-center gap-1 rounded-sm border border-red-500 bg-white px-2 text-sm font-semibold text-red-600 hover:bg-neutral-100"
+          id="menu-item-clear-circuit"
+          type="button"
+        >
+          <img src="/icons/trash.svg" alt="" class="h-4 w-4" />
+          Clear
+        </button>
+      </div>
+      <div id="share-modal-container"></div>
+    </div>
+    <script type="module" src="/jupyter-main.ts"></script>
+  </body>
+</html>

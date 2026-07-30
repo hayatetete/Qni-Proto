@@ -20,7 +20,7 @@ export class ShareModal {
         const json = JSON.parse(decodeURIComponent(location.hash.substring(9)));
         if (json.title) title = json.title;
       }
-    } catch (e) {
+    } catch {
       // 失敗しても何もしない
     }
 
@@ -64,8 +64,8 @@ export class ShareModal {
     }
 
     const copyButton = document.getElementById("copy-button");
-    const TOOLTIP_DURATION_MS = 1000
-    const TIPPY_HIDE_ANIMATION_MS = 250
+    const TOOLTIP_DURATION_MS = 1000;
+    const TIPPY_HIDE_ANIMATION_MS = 250;
 
     if (copyButton) {
       // tippyインスタンスを作成
@@ -76,9 +76,9 @@ export class ShareModal {
         duration: [0, TIPPY_HIDE_ANIMATION_MS],
       });
       
-      copyButton.addEventListener("click", () => {
-        navigator.clipboard.writeText(
-          `${location.origin}${location.pathname}${location.hash}`
+      copyButton.addEventListener("click", async () => {
+        await this.copyTextToClipboard(
+          `${location.origin}${location.pathname}${location.hash}`,
         );
         // 吹き出し表示
         tip.show();
@@ -109,5 +109,21 @@ export class ShareModal {
 
   close(): void {
     this.modalElement.classList.add("hidden");
+  }
+
+  private async copyTextToClipboard(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = text;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+    }
   }
 }

@@ -1,7 +1,12 @@
-import { CIRCUIT_STEP_EVENTS, OPERATION_EVENTS } from "./events";
+import {
+  CIRCUIT_STEP_EVENTS,
+  OPERATION_EVENTS,
+} from "./events";
 import { DropzoneList } from "./dropzone-list";
 import { CircuitStepState } from "./circuit-step-state";
 import { Container } from "pixi.js";
+import { AntiControlGate } from "./anti-control-gate";
+import { BlochSphere } from "./bloch-sphere";
 import { Dropzone } from "./dropzone";
 import { Operation } from "./operation";
 import { groupBy, need } from "./util";
@@ -20,8 +25,14 @@ import { RnotGate } from "./rnot-gate";
 import { Write0Gate } from "./write0-gate";
 import { Write1Gate } from "./write1-gate";
 import { MeasurementGate } from "./measurement-gate";
+import { PhaseGate } from "./phase-gate";
+import { QftDaggerGate } from "./qft-dagger-gate";
+import { QftGate } from "./qft-gate";
 import { ControlGate } from "./control-gate";
 import { SwapGate } from "./swap-gate";
+import { RxGate } from "./rx-gate";
+import { RyGate } from "./ry-gate";
+import { RzGate } from "./rz-gate";
 
 /**
  * Represents a single step in a quantum circuit.
@@ -73,7 +84,7 @@ export class CircuitStep extends Container {
     return this.dropzones.reduce(
       (maxIndex, dropzone, currentIndex) =>
         dropzone.isOccupied() ? currentIndex + 1 : maxIndex,
-      0
+      0,
     );
   }
 
@@ -106,6 +117,15 @@ export class CircuitStep extends Container {
   private get controlBits(): number[] {
     return this.dropzoneList
       .filterByOperationType(ControlGate)
+      .map((dropzone) => this.qubitNumberOf(dropzone));
+  }
+
+  /**
+   * このステップ内で 0 条件の制御点が置かれている量子ビット番号を返す。
+   */
+  private get antiControlBits(): number[] {
+    return this.dropzoneList
+      .filterByOperationType(AntiControlGate)
       .map((dropzone) => this.qubitNumberOf(dropzone));
   }
 
@@ -222,12 +242,25 @@ export class CircuitStep extends Container {
     this.state.setIdle();
   }
 
+  setPresentationMode(enabled: boolean): void {
+    // Read-only presentation still allows selecting a step so that the
+    // existing vertical step marker can drive state-vector inspection.
+    this.eventMode = "static";
+    this.interactiveChildren = !enabled;
+    this.dropzones.forEach((dropzone) => dropzone.setPresentationMode(enabled));
+  }
+
+  setDisplayScale(scale: number): void {
+    this.dropzones.forEach((dropzone) => dropzone.setDisplayScale(scale));
+  }
+
   /**
    * Updates the connections between operations in the circuit step.
    * This method handles the visual connections for swap operations and controlled operations.
    */
   updateConnections(): void {
     this.updateSwapConnections();
+    this.updateQftConnections();
     this.updateControlledUConnections();
   }
 
@@ -246,10 +279,15 @@ export class CircuitStep extends Container {
 
     for (const [operationClass, sameOps] of groupBy(
       operations,
-      (op) => op.constructor
+      (op) => op.constructor,
     )) {
+      if (operationClass === QftGate || operationClass === QftDaggerGate) {
+        continue;
+      }
+
       if (
-        operationClass === ControlGate &&
+        (operationClass === ControlGate ||
+          operationClass === AntiControlGate) &&
         operations.some((op) => isControllable(op))
       ) {
         continue;
@@ -257,14 +295,21 @@ export class CircuitStep extends Container {
 
       // const sameOperations = sameOps as Operation[];
       const targetBits = sameOps.map((each) =>
-        this.dropzoneList.findIndexOf(each)
+        this.dropzoneList.findIndexOf(each),
       );
       const operation = sameOps[0];
       const serializedGate = isControllable(operation)
-        ? operation.serialize(targetBits, this.controlBits)
+        ? operation.serialize(
+            targetBits,
+            this.controlBits,
+            this.antiControlBits,
+          )
         : operation.serialize(targetBits);
       result.push(serializedGate);
     }
+
+    result.push(...this.serializeQftOperations(QftGate));
+    result.push(...this.serializeQftOperations(QftDaggerGate));
 
     return result;
   }
@@ -279,41 +324,68 @@ export class CircuitStep extends Container {
    * @param stepJson ステップのJSONデータ
    * @returns 復元されたCircuitStepのインスタンス
    */
-  static fromJSON(stepJson: any[]): CircuitStep {
+  static fromJSON(stepJson: unknown[]): CircuitStep {
     if (!Array.isArray(stepJson)) {
       console.error("Invalid step data format:", stepJson);
       return new CircuitStep(1);
     }
 
-    const circuitStep = new CircuitStep(stepJson.length);
+    const labels = stepJson.map((state) => {
+      if (typeof state === "string") {
+        return state;
+      }
+      if (Array.isArray(state) && typeof state[0] === "string") {
+        return state[0];
+      }
+      return null;
+    });
+    const requiredWireCount = labels.reduce((wireCount, label, index) => {
+      const span = CircuitStep.qftSpanFromLabel(label);
+      return span === null ? wireCount : Math.max(wireCount, index + span);
+    }, stepJson.length);
+    const circuitStep = new CircuitStep(requiredWireCount);
 
     // 各ドロップゾーンにゲートを生成
-    const ops: (OperationComponent | null)[] = stepJson.map((state) => {
-      let label: string | null = null;
-      if (typeof state === "string") {
-        label = state;
-      } else if (Array.isArray(state) && typeof state[0] === "string") {
-        label = state[0];
-      }
+    const ops: (OperationComponent | null)[] = labels.map((label) => {
       if (label) {
-        const operation = this.createOperationFromLabel(label);
+        const operation = this.createOperationFromLabel(
+          CircuitStep.baseLabelFromResizableQftLabel(label),
+        );
         if (!operation) {
           // エラーメッセージとともに例外を投げる
-          throw new Error(`Unknown operation label encountered during deserialization: ${label}`);
+          throw new Error(
+            `Unknown operation label encountered during deserialization: ${label}`,
+          );
         }
         return operation;
       }
       return null;
     });
+    while (ops.length < requiredWireCount) {
+      ops.push(null);
+    }
 
-    // Swapゲートのペアリング
-    const swapIdx = ops
-      .map((op, i) => (op instanceof SwapGate ? i : -1))
-      .filter((i) => i !== -1);
+    // 旧 Qni の "QFT3" / "QFT†3" を、現行の隣接 QFT 配置へ展開する。
+    labels.forEach((label, index) => {
+      const span = CircuitStep.qftSpanFromLabel(label);
+      if (span === null || span <= 1) {
+        return;
+      }
+
+      const operationClass = label?.startsWith("QFT†")
+        ? QftDaggerGate
+        : QftGate;
+      for (let offset = 1; offset < span; offset++) {
+        ops[index + offset] = new operationClass();
+      }
+    });
 
     // コントロールゲートとXゲートの関係
     const controlIdx = ops
       .map((op, i) => (op instanceof ControlGate ? i : -1))
+      .filter((i) => i !== -1);
+    const antiControlIdx = ops
+      .map((op, i) => (op instanceof AntiControlGate ? i : -1))
       .filter((i) => i !== -1);
     const xIdx = ops
       .map((op, i) => (op instanceof XGate ? i : -1))
@@ -323,6 +395,14 @@ export class CircuitStep extends Container {
         const xOp = ops[i];
         if (xOp && "controls" in xOp) {
           xOp.controls = controlIdx;
+        }
+      }
+    }
+    if (antiControlIdx.length > 0 && xIdx.length > 0) {
+      for (const i of xIdx) {
+        const xOp = ops[i];
+        if (xOp && "antiControls" in xOp) {
+          xOp.antiControls = antiControlIdx;
         }
       }
     }
@@ -341,9 +421,10 @@ export class CircuitStep extends Container {
    * @param label ゲートのラベル文字列
    * @returns 生成されたOperationComponentインスタンス、または対応するラベルがない場合はnull
    */
-  private static createOperationFromLabel(
-    label: string
-  ): OperationComponent | null {
+  /**
+   * JSONやクリップボードに保存されたラベルから、対応するゲートを復元する。
+   */
+  static createOperationFromLabel(label: string): OperationComponent | null {
     switch (label) {
       case "H":
         return new HGate();
@@ -361,6 +442,18 @@ export class CircuitStep extends Container {
         return new TGate();
       case "T†":
         return new TDaggerGate();
+      case "P":
+        return new PhaseGate();
+      case "Rx":
+        return new RxGate();
+      case "Ry":
+        return new RyGate();
+      case "Rz":
+        return new RzGate();
+      case "QFT":
+        return new QftGate();
+      case "QFT†":
+        return new QftDaggerGate();
       case "X^½":
         return new RnotGate();
       case "|0>":
@@ -371,12 +464,35 @@ export class CircuitStep extends Container {
         return new MeasurementGate();
       case "•":
         return new ControlGate();
+      case "◦":
+        return new AntiControlGate();
       case "Swap":
         return new SwapGate();
+      case "Bloch":
+        return new BlochSphere();
       default:
         console.warn(`Unknown operation label in JSON: ${label}. Skipping.`);
         return null;
     }
+  }
+
+  private static baseLabelFromResizableQftLabel(label: string): string {
+    if (/^QFT†\d+$/.test(label)) {
+      return "QFT†";
+    }
+    if (/^QFT\d+$/.test(label)) {
+      return "QFT";
+    }
+    return label;
+  }
+
+  private static qftSpanFromLabel(label: string | null): number | null {
+    if (label === null) {
+      return null;
+    }
+
+    const match = label.match(/^QFT(?:†)?(\d+)$/);
+    return match ? parseInt(match[1], 10) : null;
   }
 
   /**
@@ -391,23 +507,30 @@ export class CircuitStep extends Container {
 
     const controlDropzones =
       this.dropzoneList.filterByOperationType(ControlGate);
+    const antiControlDropzones =
+      this.dropzoneList.filterByOperationType(AntiControlGate);
     const controllableDropzones = this.controllableDropzones();
 
     // コントロールゲートの初期化
     for (const dz of controllableDropzones) {
       if (isControllable(dz.operation)) {
         dz.operation.controls = [];
+        dz.operation.antiControls = [];
       }
     }
 
     this.updateSwapConnections();
+    this.updateQftConnections();
 
-    if (controlDropzones.length === 1 && controllableDropzones.length === 0) {
+    if (
+      controlDropzones.length + antiControlDropzones.length === 1 &&
+      controllableDropzones.length === 0
+    ) {
       return;
     }
 
     // コントロール線の接続を更新
-    if (controlDropzones.length > 0) {
+    if (controlDropzones.length > 0 || antiControlDropzones.length > 0) {
       if (controllableDropzones.length === 0) {
         this.updateControlControlConnections();
       } else {
@@ -424,11 +547,14 @@ export class CircuitStep extends Container {
   private updateControlControlConnections(): void {
     const controlDropzones =
       this.dropzoneList.filterByOperationType(ControlGate);
-    const controlBits = controlDropzones.map((dz) => this.qubitNumberOf(dz));
-    for (const dz of controlDropzones) {
+    const antiControlDropzones =
+      this.dropzoneList.filterByOperationType(AntiControlGate);
+    const markerDropzones = controlDropzones.concat(antiControlDropzones);
+    const controlBits = markerDropzones.map((dz) => this.qubitNumberOf(dz));
+    for (const dz of markerDropzones) {
       dz.connectTop = controlBits.some((bit) => this.qubitNumberOf(dz) > bit);
       dz.connectBottom = controlBits.some(
-        (bit) => this.qubitNumberOf(dz) < bit
+        (bit) => this.qubitNumberOf(dz) < bit,
       );
     }
   }
@@ -462,15 +588,52 @@ export class CircuitStep extends Container {
     this.applyConnectionUpdates();
   }
 
+  /**
+   * 隣接する QFT/QFT† を 1 つの縦長ゲートとして見せるため、接続線を更新する。
+   */
+  private updateQftConnections(): void {
+    for (const dropzone of this.dropzones) {
+      dropzone.qftConnectTop = false;
+      dropzone.qftConnectBottom = false;
+    }
+
+    this.updateQftConnectionFor(QftGate);
+    this.updateQftConnectionFor(QftDaggerGate);
+
+    this.applyConnectionUpdates();
+  }
+
+  private updateQftConnectionFor(
+    operationClass: typeof QftGate | typeof QftDaggerGate,
+  ): void {
+    for (const group of this.contiguousDropzoneGroups(operationClass)) {
+      if (group.length < 2) {
+        continue;
+      }
+
+      for (const dropzone of group) {
+        const bit = this.qubitNumberOf(dropzone);
+        const bits = group.map((each) => this.qubitNumberOf(each));
+        dropzone.qftConnectTop = bits.some((each) => bit > each);
+        dropzone.qftConnectBottom = bits.some((each) => bit < each);
+      }
+    }
+  }
+
   private updateControlledUConnections(): void {
     const controllableDropzones = this.controllableDropzones();
     const controlDropzones =
       this.dropzoneList.filterByOperationType(ControlGate);
+    const antiControlDropzones =
+      this.dropzoneList.filterByOperationType(AntiControlGate);
     const allControlBits = controlDropzones.map((dz) => this.qubitNumberOf(dz));
+    const allAntiControlBits = antiControlDropzones.map((dz) =>
+      this.qubitNumberOf(dz),
+    );
 
-    const activeControlBits = allControlBits.slice(0, controlDropzones.length);
+    const activeControlBits = allControlBits.concat(allAntiControlBits);
     const controllableBits = controllableDropzones.map((dz) =>
-      this.qubitNumberOf(dz)
+      this.qubitNumberOf(dz),
     );
     const activeOperationBits = activeControlBits.concat(controllableBits);
 
@@ -490,6 +653,7 @@ export class CircuitStep extends Container {
       for (const each of controllableDropzones) {
         need(isControllable(each.operation), "operation is not Controllable");
         each.operation.controls = allControlBits;
+        each.operation.antiControls = allAntiControlBits;
       }
     } else {
       for (const dropzone of this.dropzones) {
@@ -504,15 +668,58 @@ export class CircuitStep extends Container {
   private applyConnectionUpdates(): void {
     for (const dropzone of this.dropzones) {
       dropzone.connectTop =
-        dropzone.swapConnectTop || dropzone.controlConnectTop;
+        dropzone.swapConnectTop ||
+        dropzone.controlConnectTop ||
+        dropzone.qftConnectTop;
       dropzone.connectBottom =
-        dropzone.swapConnectBottom || dropzone.controlConnectBottom;
+        dropzone.swapConnectBottom ||
+        dropzone.controlConnectBottom ||
+        dropzone.qftConnectBottom;
     }
+  }
+
+  /**
+   * 隣り合う同種 QFT ゲートを 1 操作にまとめて、span と targets を保存する。
+   */
+  private serializeQftOperations(
+    operationClass: typeof QftGate | typeof QftDaggerGate,
+  ): SerializedOperation[] {
+    return this.contiguousDropzoneGroups(operationClass).map((group) => {
+      const operation = group[0].operation;
+      need(operation !== null, "operation is null");
+      const targetBits = group.map((dropzone) => this.qubitNumberOf(dropzone));
+      return operation.serialize(targetBits);
+    });
+  }
+
+  private contiguousDropzoneGroups(
+    operationClass: typeof QftGate | typeof QftDaggerGate,
+  ): Dropzone[][] {
+    const groups: Dropzone[][] = [];
+    let currentGroup: Dropzone[] = [];
+
+    for (const dropzone of this.dropzones) {
+      if (dropzone.operation instanceof operationClass) {
+        currentGroup.push(dropzone);
+        continue;
+      }
+
+      if (currentGroup.length > 0) {
+        groups.push(currentGroup);
+        currentGroup = [];
+      }
+    }
+
+    if (currentGroup.length > 0) {
+      groups.push(currentGroup);
+    }
+
+    return groups;
   }
 
   private controllableDropzones(): Dropzone[] {
     return this.dropzoneList.occupied.filter((dropzone) =>
-      isControllable(dropzone.operation)
+      isControllable(dropzone.operation),
     );
   }
 

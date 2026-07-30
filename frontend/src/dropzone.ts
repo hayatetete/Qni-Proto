@@ -19,6 +19,8 @@ export class Dropzone extends Container {
   private _swapConnectBottom = false;
   private _controlConnectTop = false;
   private _controlConnectBottom = false;
+  private _qftConnectTop = false;
+  private _qftConnectBottom = false;
 
   private renderer: DropzoneRenderer;
 
@@ -28,6 +30,7 @@ export class Dropzone extends Container {
     this.renderer = new DropzoneRenderer(this);
     this.redrawWires();
     this.redrawConnections();
+    this.eventMode = "static";
   }
 
   get totalSize(): number {
@@ -88,6 +91,22 @@ export class Dropzone extends Container {
     return this._controlConnectBottom;
   }
 
+  set qftConnectTop(value) {
+    this._qftConnectTop = value;
+  }
+
+  get qftConnectTop() {
+    return this._qftConnectTop;
+  }
+
+  set qftConnectBottom(value) {
+    this._qftConnectBottom = value;
+  }
+
+  get qftConnectBottom() {
+    return this._qftConnectBottom;
+  }
+
   get connectTop() {
     return this._connectTop;
   }
@@ -132,8 +151,34 @@ export class Dropzone extends Container {
     this.redrawWires();
   }
 
+  /**
+   * 指定された配置済みゲートをセルから外し、ドラッグ通知も解除する。
+   */
+  detach(operation: OperationComponent): void {
+    operation.off(OPERATION_EVENTS.GRABBED, this.emitGrabGateEvent, this);
+    if (operation.parent === this) {
+      this.removeChild(operation);
+    }
+    this.redrawWires();
+  }
+
   private emitGrabGateEvent(gate: OperationComponent, globalPosition: Point) {
     this.emit(OPERATION_EVENTS.GRABBED, gate, globalPosition);
+  }
+
+  setPresentationMode(enabled: boolean): void {
+    this.eventMode = enabled ? "none" : "static";
+    this.interactiveChildren = !enabled;
+    if (this.operation) {
+      this.operation.eventMode = enabled ? "none" : "static";
+      this.operation.interactiveChildren = !enabled;
+    }
+  }
+
+  setDisplayScale(scale: number): void {
+    if (this.operation instanceof OperationComponent) {
+      this.operation.setDisplayScale(scale);
+    }
   }
 
   redrawWires() {
@@ -159,7 +204,7 @@ export class Dropzone extends Container {
 
   hasWriteGate() {
     return ["Write0Gate", "Write1Gate"].some(
-      (each) => this.operation?.operationType === each
+      (each) => this.operation?.operationType === each,
     );
   }
 

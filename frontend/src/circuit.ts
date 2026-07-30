@@ -3,9 +3,16 @@ import { Container, Point } from "pixi.js";
 import { List } from "@pixi/ui";
 import { QubitCount, WireType } from "./types";
 import { MAX_QUBIT_COUNT, MIN_QUBIT_COUNT } from "./constants";
-import { CIRCUIT_STEP_EVENTS, OPERATION_EVENTS } from "./events";
+import {
+  CIRCUIT_STEP_EVENTS,
+  OPERATION_EVENTS,
+} from "./events";
 import { CircuitStepMarkerManager } from "./circuit-step-marker-manager";
 import { OperationComponent } from "./operation-component";
+
+type CircuitJson = {
+  cols: unknown[][];
+};
 
 /**
  * Represents the options for a {@link Circuit}.
@@ -66,7 +73,7 @@ export class Circuit extends Container {
     const qubitNumber = Math.max(
       ...this.steps.map((each) => {
         return each.highestOccupiedQubitNumber;
-      })
+      }),
     );
 
     if (qubitNumber === 0) {
@@ -117,6 +124,7 @@ export class Circuit extends Container {
     if (activeStepIndex == null) {
       throw new Error("activeStepIndex == null");
     }
+    const activeStep = this.fetchStep(activeStepIndex);
 
     this.removeEmptySteps();
     this.appendMinimumSteps();
@@ -124,9 +132,36 @@ export class Circuit extends Container {
     this.redrawDropzoneInputAndOutputWires();
     this.updateConnections();
 
-    this.fetchStep(activeStepIndex).activate();
+    if (this.steps.includes(activeStep)) {
+      activeStep.activate();
+    } else {
+      this.fetchStep(Math.min(activeStepIndex, this.steps.length - 1)).activate();
+    }
 
     this.markerManager.update(this.steps);
+  }
+
+  compactForPresentation(): void {
+    this.removeEmptySteps();
+    if (this.steps.length === 0) {
+      this.appendStep(this.minWireCount);
+    }
+    this.steps.forEach((step) => step.deactivate());
+    this.updateConnections();
+    this.markerManager.update(this.steps);
+  }
+
+  setPresentationMode(enabled: boolean): void {
+    // Inspection is read-only, but the existing step markers remain usable:
+    // selecting a step is navigation, not circuit editing.
+    this.eventMode = "auto";
+    this.interactiveChildren = true;
+    this.markerManager.visible = true;
+    this.steps.forEach((step) => step.setPresentationMode(enabled));
+  }
+
+  setDisplayScale(scale: number): void {
+    this.steps.forEach((step) => step.setDisplayScale(scale));
   }
 
   maybeAppendWire() {
@@ -168,12 +203,12 @@ export class Circuit extends Container {
    * @param jsonString 回路全体のJSONデータ文字列
    */
   fromJSON(jsonString: string): void {
-    const circuitData = JSON.parse(jsonString);
+    const circuitData = JSON.parse(jsonString) as CircuitJson;
 
     this.steps.forEach((step) => step.destroy());
     this.stepList.removeChildren();
 
-    circuitData.cols.forEach((stepJson: any[]) => {
+    circuitData.cols.forEach((stepJson) => {
       const circuitStep = CircuitStep.fromJSON(stepJson);
       this.stepList.addChild(circuitStep);
 
@@ -290,10 +325,7 @@ export class Circuit extends Container {
     this.emit(CIRCUIT_STEP_EVENTS.ACTIVATED, circuitStep);
   }
 
-  private emitOnGateGrabSignal(
-    gate: OperationComponent,
-    globalPosition: Point
-  ) {
+  private emitOnGateGrabSignal(gate: OperationComponent, globalPosition: Point) {
     this.emit(OPERATION_EVENTS.GRABBED, gate, globalPosition);
   }
 

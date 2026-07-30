@@ -47,6 +47,7 @@ export class OperationComponent extends IconableMixin(Container) {
 
   size: Size = "base";
   sizeInPx = OperationComponent.sizeInPx[this.size];
+  private displayScale = 1;
 
   insertable = false;
   insertStepPosition: number | null = null;
@@ -211,6 +212,7 @@ export class OperationComponent extends IconableMixin(Container) {
       this.whiteSprite.height = this.sizeInPx;
       this.addChild(this.sprite);
       this.addChild(this.whiteSprite);
+      this.syncDetailVisibility();
 
       this.actor.start();
 
@@ -234,6 +236,27 @@ export class OperationComponent extends IconableMixin(Container) {
 
   deactivate() {
     this.actor.send({ type: "Deactivate" });
+    if (this.sprite && this.whiteSprite) {
+      this.applyIdleStyle();
+    }
+  }
+
+  setDisplayScale(scale: number): void {
+    const clamped = Math.max(0.01, scale);
+    if (Math.abs(this.displayScale - clamped) < 0.001) return;
+
+    this.displayScale = clamped;
+    this.syncDetailVisibility();
+  }
+
+  private syncDetailVisibility(): void {
+    if (!this.sprite || !this.whiteSprite) {
+      return;
+    }
+
+    const alpha = this.sizeInPx * this.displayScale < spacingInPx(4.5) ? 0 : 1;
+    this.sprite.alpha = alpha;
+    this.whiteSprite.alpha = alpha;
   }
 
   move(globalPosition: Point) {
