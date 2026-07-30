@@ -16,33 +16,23 @@ docker run --gpus all -p 8000:8000 --rm -it qni-gl
 
 ブラウザで `http://localhost:8000/` を開く
 
-## Jupyter Notebook / VSCode Notebook で開く
+## QniNotebook
 
-リポジトリルートを Python の作業ディレクトリにして、Notebook セルで次を実行します。
+QniNotebookを使うと、Jupyter NotebookまたはVS Code Notebook上でQURI Partsの量子回路を表示・編集できます。
 
-```python
-from qni_jupyter import qni
+### 準備
 
-qni.open()
+リポジトリルートでPython環境とフロントエンドの依存関係を準備します。
+
+```shell
+python3 -m pip install -e .
+yarn install
 ```
 
-初期回路を渡す場合:
+Notebookもリポジトリルートから開いてください。基本操作は
+[`qni_tutorial.ipynb`](./qni_tutorial.ipynb) で順番に確認できます。
 
-```python
-from qni_jupyter import qni
-
-steps = [
-    [{"type": "H", "targets": [0]}],
-    [{"type": "X", "targets": [1], "controls": [0]}],
-]
-
-qni.open(steps=steps, qubit_count=2, height=720)
-```
-
-QURI Parts の回路オブジェクトを渡す場合は、文字列ではなく
-`QuantumCircuit` オブジェクトを `circuit=` に渡します。
-
-QURI の `add_*_gate` メソッドで回路を書く場合:
+### 回路を作る
 
 ```python
 from qni_jupyter import qni
@@ -51,67 +41,57 @@ from quri_parts.circuit import QuantumCircuit
 circuit = QuantumCircuit(2)
 circuit.add_H_gate(0)
 circuit.add_CNOT_gate(0, 1)
-
-qni.open(circuit=circuit, height=680)
 ```
 
-QURI の gate factory と `add_gate(...)` で回路を書く場合:
+### 回路と状態ベクトルを表示する
 
 ```python
-from qni_jupyter import qni
-from quri_parts.circuit import CNOT, H, QuantumCircuit
-
-circuit = QuantumCircuit(2)
-circuit.add_gate(H(0))
-circuit.add_gate(CNOT(0, 1))
-
-qni.open(circuit=circuit, height=680)
+qni.show_circuit_and_state(circuit)
 ```
 
-未対応 gate は Notebook 上に警告されます。`RX` / `RY` / `RZ` / `U1` は表示できますが、現状の初期ロードでは角度は復元されません。
+回路のステップ境界を選択すると、そのステップまで実行した状態ベクトルを確認できます。
 
-QURI の状態評価ワークフローで使う場合:
+### 回路だけを表示する
 
 ```python
-from qni_jupyter import qni
-from quri_parts.circuit import QuantumCircuit
-from quri_parts.core.state import quantum_state
-from quri_parts.qulacs.simulator import evaluate_state_to_vector
-
-n_qubits = 2
-circuit = QuantumCircuit(n_qubits)
-circuit.add_H_gate(0)
-circuit.add_CNOT_gate(0, 1)
-
-bell_state = quantum_state(n_qubits=n_qubits, circuit=circuit)
-out_state = evaluate_state_to_vector(bell_state)
-
-print("State vector:")
-print(out_state.vector)
-print("")
-print("Circuit:")
-print(out_state.circuit.gates)
-
-qni.open(circuit=bell_state.circuit, height=720)
+qni.show_circuit(circuit)
 ```
 
-Qiskit の `QuantumCircuit` を使う場合は、QURI Parts の変換器で QURI 回路へ変換してから渡します。
+`show_circuit()`と`show_circuit_and_state()`は読み取り専用です。
+
+### 回路を編集してPython側へ保存する
 
 ```python
-from qni_jupyter import qni
-from qiskit import QuantumCircuit as QiskitQuantumCircuit
-from quri_parts.qiskit.circuit import circuit_from_qiskit
-
-qiskit_circuit = QiskitQuantumCircuit(2)
-qiskit_circuit.h(0)
-qiskit_circuit.cx(0, 1)
-
-quri_circuit = circuit_from_qiskit(qiskit_circuit)
-
-qni.open(circuit=quri_circuit, height=720)
+editor = qni.open(circuit=circuit, height=420, mode="edit")
 ```
 
-Notebook 内では `/jupyter.html` を iframe で表示します。既存ブラウザ版の `frontend/index.html` は差し替えません。GUI の `Export QURI` から QURI Parts / QURI VM 用の Python コードまたは `.ipynb` をコピー・ダウンロードできます。
+表示されたエディタでゲートを編集した後、次のセルを実行します。
+
+```python
+circuit = editor.commit()
+```
+
+`commit()`は編集後のQURI Parts回路を返します。同じステップに並べた複数のゲートは、保存後に再表示しても同じステップとして表示されます。
+
+```python
+qni.show_circuit_and_state(circuit)
+```
+
+### 表示を終了する
+
+Notebookを閉じる前や、開発中の実装を読み直す前に実行します。
+
+```python
+qni.close()
+```
+
+### 補足
+
+- `qni.open()`には`steps=`またはQURI Partsの`QuantumCircuit`を`circuit=`で渡せます。
+- 未対応ゲートはスキップされ、Notebook上に警告が表示されます。
+- Qiskit回路は、QURI Partsの`circuit_from_qiskit()`で変換してから渡してください。
+- Notebookでは`/jupyter.html`をiframeで表示し、既存の`frontend/index.html`は変更しません。
+- GUIの`Export QURI`から、QURI Parts / QURI VM向けPythonコードやNotebookを出力できます。
 
 ## .htpasswd 認証を有効にするには
 
