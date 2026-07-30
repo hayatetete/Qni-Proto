@@ -3,7 +3,12 @@ import { QubitCircle } from "./qubit-circle";
 import { QubitCount } from "./types";
 import { STATE_VECTOR_EVENTS } from "./state-vector-events";
 import { StateVectorRenderer } from "./state-vector-renderer";
+import { StateVectorAspectIndex } from "./state-vector-layout";
 import { MAX_QUBIT_COUNT, MIN_QUBIT_COUNT } from "./constants";
+
+type AmplitudeMap = {
+  [key: number]: [number, number];
+};
 
 class InvalidQubitCountError extends Error {
   constructor(value: QubitCount) {
@@ -65,8 +70,26 @@ export class StateVectorComponent extends Container {
     }
   }
 
+  setDisplayScale(scale: number): void {
+    const visibleQubitCirclesChanged = this.renderer.setDisplayScale(scale);
+    if (visibleQubitCirclesChanged) {
+      this.emitVisibleQubitCirclesChanged();
+    }
+  }
+
+  setAspectIndex(aspectIndex: StateVectorAspectIndex): void {
+    this.renderer.setAspectIndex(aspectIndex);
+    this.redrawStateVector();
+    this.emitVisibleQubitCirclesChanged();
+    this.emit(STATE_VECTOR_EVENTS.QUBIT_COUNT_CHANGED, this.qubitCount);
+  }
+
   qubitCircleAt(index: number): QubitCircle | undefined {
     return this.renderer.qubitCircleAt(index);
+  }
+
+  updateAmplitudes(amplitudes: AmplitudeMap): void {
+    this.renderer.updateAmplitudes(amplitudes);
   }
 
   private validateQubitCount(value: QubitCount): QubitCount {

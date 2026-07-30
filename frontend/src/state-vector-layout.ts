@@ -5,7 +5,47 @@ import { Spacing } from "./spacing";
 import { need, spacingInPx } from "./util";
 import { MIN_QUBIT_COUNT } from "./constants";
 
+export type StateVectorAspectIndex = number;
+
+export type StateVectorAspectOption = {
+  aspectIndex: StateVectorAspectIndex;
+  cols: number;
+  rows: number;
+};
+
+export type StateVectorVisibleCell = {
+  position: Point;
+  index: number;
+  indices: number[];
+  approximate: boolean;
+};
+
+export function stateVectorDefaultAspectIndex(qubitCount: QubitCount): number {
+  const q = Math.max(1, Math.min(16, qubitCount));
+  if (q === 1) return 1;
+  if (q === 2) return 2;
+  if (q === 3 || q === 4) return 3;
+  if (q === 5 || q === 6) return 4;
+  if (q <= 10) return 5;
+  if (q <= 12) return 6;
+  if (q <= 14) return 7;
+  return 8;
+}
+
+export function stateVectorAspectOptions(
+  qubitCount: QubitCount
+): StateVectorAspectOption[] {
+  const q = Math.max(1, Math.min(16, qubitCount));
+  return Array.from({ length: q + 1 }, (_, aspectIndex) => ({
+    aspectIndex,
+    cols: Math.pow(2, aspectIndex),
+    rows: Math.pow(2, q - aspectIndex),
+  }));
+}
+
 export class StateVectorLayout {
+  private static readonly AGGREGATE_CELL_PITCH_THRESHOLD = spacingInPx(2.5);
+
   private static QUBIT_CIRCLE_SIZE_MAP: { [key: number]: Size } = {
     1: "xl",
     2: "xl",
@@ -29,9 +69,13 @@ export class StateVectorLayout {
   private _cellSize: number = 0;
   private _width: number = 0;
   private _height: number = 0;
+  private _aspectIndex: StateVectorAspectIndex =
+    stateVectorDefaultAspectIndex(MIN_QUBIT_COUNT);
+  private _aspectCustomized = false;
 
   constructor(qubitCount: QubitCount) {
     this._qubitCount = qubitCount;
+    this.syncAspectIndexWithQubitCount();
     this.update();
   }
 
@@ -44,6 +88,7 @@ export class StateVectorLayout {
 
     if (this._qubitCount !== newValue || newValue === MIN_QUBIT_COUNT) {
       this._qubitCount = newValue;
+      this.syncAspectIndexWithQubitCount();
       this.update();
     }
   }
@@ -54,6 +99,19 @@ export class StateVectorLayout {
 
   get rows(): number {
     return this._rows;
+  }
+
+  get aspectIndex(): StateVectorAspectIndex {
+    return this._aspectIndex;
+  }
+
+  set aspectIndex(newValue: StateVectorAspectIndex) {
+    const clamped = this.clampAspectIndex(newValue);
+    if (this._aspectIndex === clamped && this._aspectCustomized) return;
+
+    this._aspectIndex = clamped;
+    this._aspectCustomized = true;
+    this.update();
   }
 
   get padding(): number {
@@ -107,29 +165,62 @@ export class StateVectorLayout {
     startIndexX: number,
     startIndexY: number,
     endIndexX: number,
-    endIndexY: number
-  ) {
-    const circles: { position: Point; index: number }[] = [];
+    endIndexY: number,
+    displayScale = 1
+  ): StateVectorVisibleCell[] {
+    const cells: StateVectorVisibleCell[] = [];
+    const stride = this.aggregateStride(displayScale);
+    const stateCount = Math.pow(2, this.qubitCount);
+    const aggregate = stride > 1;
     const maxVisibleCircles =
       Math.ceil(this.width / this._cellSize) *
       Math.ceil(this.height / this._cellSize);
     let count = 0;
+    const blockStartX = Math.floor(startIndexX / stride) * stride;
+    const blockStartY = Math.floor(startIndexY / stride) * stride;
 
-    for (let y = startIndexY; y < endIndexY && count < maxVisibleCircles; y++) {
+    for (
+      let y = blockStartY;
+      y < endIndexY && count < maxVisibleCircles;
+      y += stride
+    ) {
       for (
-        let x = startIndexX;
+        let x = blockStartX;
         x < endIndexX && count < maxVisibleCircles;
-        x++
+        x += stride
       ) {
-        const posX = this.padding + x * this._cellSize;
-        const posY = this.padding + y * this._cellSize;
+        const blockEndX = Math.min(x + stride, this.cols);
+        const blockEndY = Math.min(y + stride, this.rows);
+        const posX =
+          this.padding +
+          x * this._cellSize +
+          ((blockEndX - x - 1) * this._cellSize) / 2;
+        const posY =
+          this.padding +
+          y * this._cellSize +
+          ((blockEndY - y - 1) * this._cellSize) / 2;
         const index = y * this.cols + x;
-        circles.push({ position: new Point(posX, posY), index });
+        const indices = this.indicesInBlock(
+          x,
+          y,
+          blockEndX,
+          blockEndY,
+          stateCount
+        );
+        if (indices.length === 0) {
+          continue;
+        }
+        cells.push({
+          position: new Point(posX, posY),
+          index,
+          indices,
+          approximate: aggregate,
+        });
         count++;
       }
     }
 
-    return circles;
+    return cells;
   }
 
   qubitCirclePositionAt(index: number): Point {
@@ -142,8 +233,9 @@ export class StateVectorLayout {
   }
 
   private update(): void {
-    this._cols = Math.pow(2, Math.ceil(this.qubitCount / 2));
-    this._rows = Math.ceil(Math.pow(2, this.qubitCount) / this._cols);
+    const stateCount = Math.pow(2, this.qubitCount);
+    this._cols = Math.pow(2, this._aspectIndex);
+    this._rows = Math.ceil(stateCount / this._cols);
     this._padding = this.qubitCircleSizeInPx;
     this.updateQubitCircleMargin();
     this._cellSize = this.qubitCircleSizeInPx + this._qubitCircleMargin;
@@ -151,5 +243,53 @@ export class StateVectorLayout {
     this._width = contentWidth + this._padding * 2;
     const contentHeight = this._rows * this._cellSize - this._qubitCircleMargin;
     this._height = contentHeight + this._padding * 2;
+  }
+
+  aggregateStride(displayScale: number): number {
+    const renderedPitch = this._cellSize * Math.max(0.01, displayScale);
+    if (renderedPitch >= StateVectorLayout.AGGREGATE_CELL_PITCH_THRESHOLD) {
+      return 1;
+    }
+
+    const rawStride = Math.ceil(
+      StateVectorLayout.AGGREGATE_CELL_PITCH_THRESHOLD / renderedPitch
+    );
+    const powerOfTwoStride = Math.pow(2, Math.ceil(Math.log2(rawStride)));
+    const maxStride = Math.max(this.cols, this.rows);
+    return Math.max(1, Math.min(maxStride, powerOfTwoStride));
+  }
+
+  private indicesInBlock(
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    stateCount: number
+  ): number[] {
+    const indices: number[] = [];
+
+    for (let y = startY; y < endY; y++) {
+      for (let x = startX; x < endX; x++) {
+        const index = y * this.cols + x;
+        if (index < stateCount) {
+          indices.push(index);
+        }
+      }
+    }
+
+    return indices;
+  }
+
+  private syncAspectIndexWithQubitCount(): void {
+    if (this._aspectCustomized) {
+      this._aspectIndex = this.clampAspectIndex(this._aspectIndex);
+      return;
+    }
+
+    this._aspectIndex = stateVectorDefaultAspectIndex(this._qubitCount);
+  }
+
+  private clampAspectIndex(value: StateVectorAspectIndex): number {
+    return Math.min(this._qubitCount, Math.max(0, Math.round(value)));
   }
 }

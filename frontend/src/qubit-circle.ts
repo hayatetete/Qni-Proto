@@ -21,6 +21,8 @@ export class QubitCircle extends Container {
   private _probability = 0;
   private _phase = 0;
   private _size: Size = "xl";
+  private _displayScale = 1;
+  private _approximate = false;
   private probabilityCircle: Graphics;
   private border: Graphics;
   private phaseContainer: Container;
@@ -78,9 +80,7 @@ export class QubitCircle extends Container {
 
     this._phase = newValue;
 
-    if (this.probability > 0) {
-      this.showPhaseHand();
-    }
+    this.updatePhaseHand();
     this.updatePhaseRotation();
   }
 
@@ -93,6 +93,25 @@ export class QubitCircle extends Container {
 
     this._size = newValue;
 
+    this.updateProbabilityCircle();
+    this.updateBorder();
+    this.updatePhaseHand();
+  }
+
+  set displayScale(newValue: number) {
+    const clamped = Math.max(0.01, newValue);
+    if (Math.abs(this._displayScale - clamped) < 0.001) return;
+
+    this._displayScale = clamped;
+    this.updateProbabilityCircle();
+    this.updateBorder();
+    this.updatePhaseHand();
+  }
+
+  set approximate(newValue: boolean) {
+    if (this._approximate === newValue) return;
+
+    this._approximate = newValue;
     this.updateProbabilityCircle();
     this.updateBorder();
     this.updatePhaseHand();
@@ -113,6 +132,22 @@ export class QubitCircle extends Container {
   private updateProbabilityCircle(): void {
     if (this.probability === 0) {
       this.hideProbabilityCircle();
+      return;
+    }
+
+    if (this.shouldUseCompactApproximation()) {
+      this.probabilityCircle
+        .clear()
+        .circle(this.sizeInPx / 2, this.sizeInPx / 2, this.sizeInPx / 2)
+        .fill({
+          color: Colors["bg-brand"],
+          alpha: Math.max(
+            this._approximate ? 0.12 : 0.08,
+            this.probability / 100
+          ),
+        });
+
+      this.showProbabilityCircle();
       return;
     }
 
@@ -152,6 +187,11 @@ export class QubitCircle extends Container {
   // border methods
 
   private updateBorder(): void {
+    if (this.renderedSizeInPx < 10 || this._approximate) {
+      this.border.clear();
+      return;
+    }
+
     this.border
       .clear()
       .circle(this.sizeInPx / 2, this.sizeInPx / 2, this.sizeInPx / 2)
@@ -182,7 +222,12 @@ export class QubitCircle extends Container {
   private updatePhaseHand(): void {
     need(this.handLength > 0, `Invalid hand length: ${this.handLength}`);
 
-    if (this.probability === 0) {
+    if (
+      this.probability === 0 ||
+      this.renderedSizeInPx < 12 ||
+      this._approximate ||
+      this.shouldUseCompactApproximation()
+    ) {
       this.hidePhaseHand();
       return;
     }
@@ -219,5 +264,13 @@ export class QubitCircle extends Container {
     need(size > 0, `Invalid size for ${this._size}: ${size}`);
 
     return size;
+  }
+
+  private get renderedSizeInPx(): number {
+    return this.sizeInPx * this._displayScale;
+  }
+
+  private shouldUseCompactApproximation(): boolean {
+    return this.renderedSizeInPx < 8;
   }
 }

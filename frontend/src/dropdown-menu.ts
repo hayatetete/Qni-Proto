@@ -1,15 +1,9 @@
 export class DropdownMenu {
-  private menuButton: HTMLElement | null;
-  private menuDropdown: HTMLElement | null;
-  private menuContainer: HTMLElement | null;
   private activeClass = "bg-neutral-200";
   private algorithmsButton: HTMLElement | null;
   private algorithmDropdown: HTMLElement | null;
 
   constructor() {
-    this.menuContainer = document.getElementById("menu-container");
-    this.menuButton = document.getElementById("menu-button");
-    this.menuDropdown = document.getElementById("menu-dropdown");
     this.algorithmsButton = document.getElementById(
       "quantum-algorithms"
     );
@@ -17,12 +11,6 @@ export class DropdownMenu {
       "quantum-algorithms-dropdown"
     );
 
-    if (this.menuButton) {
-      this.menuButton.addEventListener(
-        "click",
-        this.toggleMenuDropdown.bind(this)
-      );
-    }
     document.addEventListener("click", this.maybeHideMenuDropdown.bind(this));
 
     if (this.algorithmsButton && this.algorithmDropdown) {
@@ -39,40 +27,14 @@ export class DropdownMenu {
     }
   }
 
-  private toggleMenuDropdown(): void {
-    if (!this.menuDropdown || !this.menuButton) return;
-    const isActive = this.menuDropdown.classList.toggle("hidden");
-    if (!isActive) {
-      this.menuButton.classList.add(this.activeClass);
-      this.menuButton.setAttribute("aria-expanded", "true");
-    } else {
-      this.menuButton.classList.remove(this.activeClass);
-      this.menuButton.setAttribute("aria-expanded", "false");
-      this.hideAlgorithmDropdown();
-    }
-  }
-
   private maybeHideMenuDropdown(event: MouseEvent): void {
     const clickedEl = event.target as HTMLElement;
-    if (
-      this.menuContainer &&
-      !this.menuContainer.contains(clickedEl) &&
-      this.menuDropdown &&
-      !this.menuDropdown.classList.contains("hidden")
-    ) {
-      this.menuDropdown.classList.add("hidden");
-      if (this.menuButton) {
-        this.menuButton.classList.remove(this.activeClass);
-        this.menuButton.setAttribute("aria-expanded", "false");
-      }
-      this.hideAlgorithmDropdown();
-    }
-
     if (
       this.algorithmDropdown &&
       !this.algorithmDropdown.classList.contains("hidden") &&
       !this.algorithmDropdown.contains(clickedEl) &&
-      clickedEl !== this.algorithmsButton
+      this.algorithmsButton &&
+      !this.algorithmsButton.contains(clickedEl)
     ) {
       this.hideAlgorithmDropdown();
     }
@@ -83,6 +45,8 @@ export class DropdownMenu {
     const isHidden = this.algorithmDropdown.classList.toggle("hidden");
     if (!isHidden) {
       this.algorithmDropdown.style.display = "";
+      this.algorithmsButton.classList.add(this.activeClass);
+      this.algorithmsButton.setAttribute("aria-expanded", "true");
     } else {
       this.hideAlgorithmDropdown();
     }
@@ -91,10 +55,11 @@ export class DropdownMenu {
   private hideAlgorithmDropdown(): void {
     if (this.algorithmDropdown) {
       this.algorithmDropdown.classList.add("hidden");
-      // Reset position
-      this.algorithmDropdown.style.left = "";
-      this.algorithmDropdown.style.top = "";
       this.algorithmDropdown.style.display = "none";
+    }
+    if (this.algorithmsButton) {
+      this.algorithmsButton.classList.remove(this.activeClass);
+      this.algorithmsButton.setAttribute("aria-expanded", "false");
     }
   }
 }
