@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:unit": "vitest run --dir tests/vitest --reporter dot --coverage",
+    "test:unit": "vitest run --dir test/vitest --reporter dot --coverage",
     "test:system": "playwright test",
     "test": "yarn lint && yarn test:unit && yarn test:system",
     "lint": "eslint .",
