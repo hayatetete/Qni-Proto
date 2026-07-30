@@ -7700,6 +7700,7 @@ __metadata:
     start-server-and-test: "npm:^2.0.8"
     strip-ansi: "npm:~7.1.0"
     tailwindcss: "npm:^3.4.12"
+    tippy.js: "npm:^6.3.7"
     typedoc: "npm:~0.26.7"
     typescript: "npm:<=5.6.0"
     typescript-eslint: "npm:^8.6.0"
