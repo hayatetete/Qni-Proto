@@ -262,6 +262,8 @@ class QniJupyterServer:
         self.port = port or _find_free_port()
         self.backend_url = backend_url
         self.process: subprocess.Popen[str] | None = None
+        self.log_path: Path | None = None
+        self._log_file: Any | None = None
 
     def start(self) -> None:
         """Start the frontend server once and wait until it accepts HTTP traffic."""
@@ -272,39 +274,79 @@ class QniJupyterServer:
         if self.backend_url is not None:
             env["VITE_BACKEND_URL"] = self.backend_url
 
+        self.log_path = self.frontend_dir / "qni_frontend.log"
+        self._log_file = self.log_path.open("a", encoding="utf-8")
+        self._log_file.write("\n=== Starting Qni frontend ===\n")
+        self._log_file.write(f"frontend_dir: {self.frontend_dir}\n")
+        self._log_file.write(f"port: {self.port}\n")
+        self._log_file.flush()
+
         self.process = subprocess.Popen(
             ["yarn", "dev", "--host", "127.0.0.1", "--port", str(self.port)],
             cwd=self.frontend_dir,
             env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=self._log_file,
+            stderr=self._log_file,
             text=True,
         )
         self._wait_until_ready()
 
     def close(self) -> None:
         """Terminate the frontend server started for notebook display."""
-        if not self.process or self.process.poll() is not None:
-            return
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
 
-        self.process.terminate()
-        try:
-            self.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait(timeout=5)
+        self.process = None
+
+        if self._log_file is not None:
+            try:
+                self._log_file.close()
+            finally:
+                self._log_file = None
 
     def _wait_until_ready(self) -> None:
         """Poll the chosen localhost port until Vite is ready or fails."""
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             if self.process and self.process.poll() is not None:
-                raise RuntimeError("QniGPU frontend server exited before startup.")
+                log_tail = self._read_log_tail()
+                raise RuntimeError(
+                    "QniGPU frontend server exited before startup.\n"
+                    f"log: {self.log_path}\n\n"
+                    f"{log_tail}"
+                )
             if _is_port_open(self.port):
                 return
             time.sleep(0.1)
 
-        raise TimeoutError("Timed out waiting for QniGPU frontend server.")
+        log_tail = self._read_log_tail()
+        raise TimeoutError(
+            "Timed out waiting for QniGPU frontend server.\n"
+            f"log: {self.log_path}\n\n"
+            f"{log_tail}"
+        )
+
+    def _read_log_tail(self) -> str:
+        """Read the tail of the frontend log for startup diagnostics."""
+        if self._log_file is not None:
+            self._log_file.flush()
+
+        if self.log_path is None or not self.log_path.exists():
+            return "(frontend log was not created)"
+
+        try:
+            text = self.log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return f"(failed to read frontend log: {exc})"
+
+        lines = text.splitlines()
+        tail = "\n".join(lines[-80:])
+        return tail or "(frontend log is empty)"
 
 
 class QniJupyterBackendServer:
