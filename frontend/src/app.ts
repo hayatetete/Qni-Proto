@@ -13,7 +13,6 @@ import { StateVectorComponent } from "./state-vector-component";
 import { StateVectorFrame } from "./state-vector-frame";
 import { StateVectorAspectIndex } from "./state-vector-layout";
 import type { JupyterViewMode } from "./jupyter-bridge";
-import { setJupyterLockControlState } from "./jupyter-actions";
 import { OperationPalette } from "./operation-palette";
 import { logger, rectIntersect } from "./util";
 import {
@@ -86,7 +85,6 @@ export class App {
   private jupyterZoomFrame: number | null = null;
   private jupyterActivePointers = new Map<number, Point>();
   private jupyterLastPinchDistance: number | null = null;
-  private jupyterLockedSnapshot: HTMLImageElement | null = null;
 
   public static get instance(): App {
     if (!this._instance) {
@@ -1540,7 +1538,6 @@ export class App {
 
   private handleJupyterZoomWheel = (event: WheelEvent): void => {
     if (
-      this.jupyterLockedSnapshot ||
       this.jupyterViewMode === "notebook" ||
       (!event.ctrlKey && !event.metaKey)
     ) {
@@ -1554,7 +1551,7 @@ export class App {
   };
 
   private handleJupyterZoomPointerDown = (event: PointerEvent): void => {
-    if (this.jupyterLockedSnapshot || this.jupyterViewMode === "notebook") {
+    if (this.jupyterViewMode === "notebook") {
       return;
     }
     if (event.pointerType !== "touch") {
@@ -1571,7 +1568,6 @@ export class App {
 
   private handleJupyterZoomPointerMove = (event: PointerEvent): void => {
     if (
-      this.jupyterLockedSnapshot ||
       this.jupyterViewMode === "notebook" ||
       event.pointerType !== "touch"
     ) {
@@ -1697,92 +1693,6 @@ export class App {
     this.app.renderer.background.color = isPresentation
       ? 0xffffff
       : Colors["bg"];
-  }
-
-  public downloadJupyterPng(): void {
-    if (!this.isJupyterEntry) {
-      return;
-    }
-
-    if (this.jupyterLockedSnapshot) {
-      this.downloadImageUrl(this.jupyterLockedSnapshot.src, "qni-notebook-view.png");
-      return;
-    }
-
-    const canvas = this.app.canvas;
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        return;
-      }
-      const url = URL.createObjectURL(blob);
-      this.downloadImageUrl(url, "qni-notebook-view.png");
-      URL.revokeObjectURL(url);
-    }, "image/png");
-  }
-
-  public toggleJupyterSnapshotLock(): void {
-    if (!this.isJupyterEntry) {
-      return;
-    }
-    if (this.jupyterLockedSnapshot) {
-      this.unlockJupyterSnapshot();
-      return;
-    }
-
-    const image = document.createElement("img");
-    image.src = this.app.canvas.toDataURL("image/png");
-    image.alt = "Locked Qni notebook snapshot";
-    image.style.display = "block";
-    image.style.width = this.app.canvas.style.width || "100%";
-    image.style.maxWidth = "100%";
-    image.style.height = this.app.canvas.style.height || "auto";
-    image.style.objectFit = "contain";
-
-    this.app.canvas.after(image);
-    this.app.canvas.style.display = "none";
-    this.jupyterLockedSnapshot = image;
-    this.app.stop();
-    this.setJupyterEditingDisabled(true);
-    setJupyterLockControlState(true);
-  }
-
-  private unlockJupyterSnapshot(): void {
-    this.jupyterLockedSnapshot?.remove();
-    this.jupyterLockedSnapshot = null;
-    this.app.canvas.style.display = "block";
-    this.app.start();
-    this.setJupyterEditingDisabled(false);
-    setJupyterLockControlState(false);
-  }
-
-  private downloadImageUrl(url: string, filename: string): void {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-
-  private setJupyterEditingDisabled(disabled: boolean): void {
-    const menu = document.getElementById("menu-container");
-    const sidePanel = document.querySelector<HTMLElement>(
-      '[aria-label="Qni Jupyter side panel"]',
-    );
-    const button = document.getElementById(
-      "menu-item-clear-circuit",
-    ) as HTMLButtonElement | null;
-    if (menu) {
-      menu.inert = disabled;
-    }
-    if (sidePanel) {
-      sidePanel.inert = disabled;
-    }
-    if (button) {
-      button.disabled = disabled;
-      button.classList.toggle("opacity-50", disabled);
-      button.classList.toggle("cursor-not-allowed", disabled);
-    }
   }
 
   /**
