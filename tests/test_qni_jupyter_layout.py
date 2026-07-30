@@ -32,12 +32,11 @@ def test_editor_commit_preserves_parallel_gate_columns() -> None:
         "qubit_count": 3,
         "warnings": [],
         "code": (
-            "from tests.test_qni_jupyter_layout import FakeCircuit, FakeGate\n"
-            "circuit = FakeCircuit(3, [\n"
-            "    FakeGate('H', (0,)),\n"
-            "    FakeGate('H', (1,)),\n"
-            "    FakeGate('H', (2,)),\n"
-            "])\n"
+            "from quri_parts.circuit import QuantumCircuit\n"
+            "circuit = QuantumCircuit(3)\n"
+            "circuit.add_H_gate(0)\n"
+            "circuit.add_H_gate(1)\n"
+            "circuit.add_H_gate(2)\n"
         ),
     }
     editor = qni.QniEditor(
