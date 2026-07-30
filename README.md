@@ -22,15 +22,69 @@ QniNotebookを使うと、Jupyter NotebookまたはVS Code Notebook上でQURI Pa
 
 ### 準備
 
-リポジトリルートでPython環境とフロントエンドの依存関係を準備します。
+QniNotebookは現在、リポジトリをcloneした開発環境で動作します。
+Pythonパッケージ単体での配布には対応していません。
+
+次のソフトウェアを事前に用意してください。
+
+- Python 3.10以上
+- Node.js 20以上
+- Corepack（Node.jsに同梱）
+- Jupyter Notebook、JupyterLab、またはVS CodeのNotebook機能
+
+リポジトリをcloneし、リポジトリルートへ移動します。
 
 ```shell
-python3 -m pip install -e .
-yarn install
+git clone https://github.com/hayatetete/Qni-Proto.git
+cd Qni-Proto
 ```
 
-Notebookもリポジトリルートから開いてください。基本操作は
-[`qni_tutorial.ipynb`](./qni_tutorial.ipynb) で順番に確認できます。
+Python仮想環境を作成します。
+
+Linux / macOS / WSL:
+
+```shell
+python3 -m venv .venv-qni
+source .venv-qni/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+py -m venv .venv-qni
+.\.venv-qni\Scripts\Activate.ps1
+```
+
+QniNotebook、backend、JupyterLabを同じPython環境へインストールします。
+
+```shell
+python -m pip install --upgrade pip
+python -m pip install -e . -e ./backend jupyterlab
+```
+
+Corepackを有効にし、frontendの依存関係をインストールします。
+
+```shell
+corepack enable
+cd frontend
+yarn install --immutable
+cd ..
+```
+
+### チュートリアルを起動する
+
+JupyterLabを使用する場合:
+
+```shell
+jupyter lab qni_tutorial.ipynb
+```
+
+VS Codeを使用する場合は、リポジトリルートをVS Codeで開き、
+[`qni_tutorial.ipynb`](./qni_tutorial.ipynb) のカーネルに
+`.venv-qni`を選択してください。
+
+Notebookはリポジトリルートから開いてください。初回のQni表示時に、
+ローカルのbackendとVite開発サーバーが自動的に起動します。
 
 ### 回路を作る
 
