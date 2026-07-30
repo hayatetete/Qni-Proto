@@ -201,6 +201,15 @@ describe("CircuitStep", () => {
     });
   });
 
+  describe("setPresentationMode", () => {
+    it("keeps step selection enabled while disabling gate editing", () => {
+      circuitStep.setPresentationMode(true);
+
+      expect(circuitStep.eventMode).toBe("static");
+      expect(circuitStep.interactiveChildren).toBe(false);
+    });
+  });
+
   describe("deactivate", () => {
     it("deactivates the circuit step", () => {
       circuitStep.activate();

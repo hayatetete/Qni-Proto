@@ -61,6 +61,14 @@ describe("QubitCircle", () => {
       qubitCircle.phase = 2 * Math.PI;
       expect(qubitCircle.phase).toBe(2 * Math.PI);
     });
+
+    it("should keep phase hand hidden when display scale is tiny", () => {
+      qubitCircle.probability = 100;
+      qubitCircle.displayScale = 0.1;
+      qubitCircle.phase = Math.PI;
+
+      expect(qubitCircle["phaseHand"].alpha).toBe(0.01);
+    });
   });
 
   describe("size", () => {
