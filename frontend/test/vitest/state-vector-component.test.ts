@@ -58,4 +58,68 @@ describe("StateVectorComponent", () => {
     stateVector.setViewport(newScrollRect);
     expect(stateVector.visibleQubitCircleIndices.length).toBeLessThan(16);
   });
+
+  it("should arrange all basis states in one row when the widest aspect is selected", () => {
+    stateVector.qubitCount = 4;
+    stateVector.setAspectIndex(4);
+    expect(stateVector.qubitCircleAt(15)?.position.y).toBe(
+      stateVector.qubitCircleAt(0)?.position.y
+    );
+  });
+
+  it("should redraw newly exposed circles when viewport size grows", () => {
+    const narrowStateVector = new StateVectorComponent({
+      initialQubitCount: 6,
+      viewport: new Rectangle(0, 0, 64, 64),
+    });
+    const before = narrowStateVector.visibleQubitCircleIndices.length;
+
+    narrowStateVector.setViewport(new Rectangle(0, 0, 360, 64));
+
+    expect(narrowStateVector.visibleQubitCircleIndices.length).toBeGreaterThan(
+      before
+    );
+  });
+
+  it("should draw fewer representative circles when zoomed far out", () => {
+    const zoomedOutStateVector = new StateVectorComponent({
+      initialQubitCount: 8,
+      viewport: new Rectangle(0, 0, 2000, 2000),
+    });
+    zoomedOutStateVector.setDisplayScale(0.1);
+    const renderedCircles = zoomedOutStateVector.children.filter(
+      (child) => child instanceof QubitCircle
+    );
+
+    expect(renderedCircles.length).toBeLessThan(
+      zoomedOutStateVector.qubitCircleCount
+    );
+  });
+
+  it("should aggregate the one-row aspect when zoomed far out", () => {
+    const rowStateVector = new StateVectorComponent({
+      initialQubitCount: 8,
+      viewport: new Rectangle(0, 0, 5000, 200),
+    });
+    rowStateVector.setAspectIndex(8);
+    rowStateVector.setDisplayScale(0.1);
+    const renderedCircles = rowStateVector.children.filter(
+      (child) => child instanceof QubitCircle
+    );
+
+    expect(renderedCircles.length).toBeLessThan(rowStateVector.qubitCircleCount);
+  });
+
+  it("should return a representative circle for a visible aggregated index", () => {
+    const zoomedOutStateVector = new StateVectorComponent({
+      initialQubitCount: 8,
+      viewport: new Rectangle(0, 0, 2000, 2000),
+    });
+    zoomedOutStateVector.setDisplayScale(0.1);
+    const visibleIndex = zoomedOutStateVector.visibleQubitCircleIndices[1];
+
+    expect(zoomedOutStateVector.qubitCircleAt(visibleIndex)).toBeInstanceOf(
+      QubitCircle
+    );
+  });
 });
