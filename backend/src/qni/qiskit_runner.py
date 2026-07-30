@@ -25,6 +25,7 @@ from qni.types import (
     DeviceType,
     MeasuredBits,
     QiskitAmplitude,
+    QiskitStepAmplitudes,
     QiskitStepResult,
 )
 
@@ -91,6 +92,7 @@ class QiskitRunner:
     """
 
     _STATEVECTOR_LABEL = "state_at_until_step"
+    _BLOCH_STATEVECTOR_LABEL_PREFIX = "state_at_bloch_step_"
 
     def __init__(self, logger: logging.Logger | None = None) -> None:
         """Initialize QiskitRunner with an optional logger.
@@ -142,8 +144,9 @@ class QiskitRunner:
             return step_results
 
         result = self._run_backend(device=device)
-        statevector = self._get_statevector(result)
+        statevector = self._get_statevector(result, self._STATEVECTOR_LABEL)
         measured_bits = self._extract_measurement_results(result)
+        bloch_vectors = self._bloch_vectors_by_step(result, statevector)
 
         if until_step_index is None:
             until_step_index = self._last_step_index()
@@ -154,11 +157,15 @@ class QiskitRunner:
                     QiskitStepResult(
                         measuredBits=measured_bits[step_index],
                         amplitudes=statevector,
+                        blochVectors=bloch_vectors[step_index],
                     ),
                 )
             else:
                 step_results.append(
-                    QiskitStepResult(measuredBits=measured_bits[step_index]),
+                    QiskitStepResult(
+                        measuredBits=measured_bits[step_index],
+                        blochVectors=bloch_vectors[step_index],
+                    ),
                 )
 
         return step_results
@@ -201,6 +208,14 @@ class QiskitRunner:
                     ),
                     default=-1,
                 ),
+                max(
+                    (
+                        max(gate.get("antiControls", [-1]))
+                        for step in self.steps
+                        for gate in step
+                    ),
+                    default=-1,
+                ),
             )
             + 1
         )
@@ -222,6 +237,8 @@ class QiskitRunner:
 
             if step_index == until_step_index:
                 circuit.save_statevector(label=self._STATEVECTOR_LABEL)
+            if self._step_has_bloch_display(step):
+                circuit.save_statevector(label=self._bloch_statevector_label(step_index))
 
         return circuit
 
@@ -234,9 +251,13 @@ class QiskitRunner:
 
         return backend.run(circuit_transpiled, shots=1, memory=True).result()
 
-    def _get_statevector(self, result: Result) -> dict[int, QiskitAmplitude]:
+    def _get_statevector(
+        self,
+        result: Result,
+        label: str,
+    ) -> dict[int, QiskitAmplitude]:
         amplitudes: npt.NDArray[np.complex128] = np.asarray(
-            result.data().get(self._STATEVECTOR_LABEL),
+            result.data().get(label),
             dtype=np.complex128,
         )
 
@@ -271,3 +292,60 @@ class QiskitRunner:
                     measured_bits[index][bit] = int(bit_string[-(bit + 1)])
 
         return measured_bits
+
+    def _bloch_vectors_by_step(
+        self,
+        result: Result,
+        fallback_statevector: QiskitStepAmplitudes,
+    ) -> list[dict[int, dict[str, float]]]:
+        bloch_vectors: list[dict[int, dict[str, float]]] = []
+        for step_index, step in enumerate(self.steps):
+            if not self._step_has_bloch_display(step):
+                bloch_vectors.append({})
+                continue
+
+            label = self._bloch_statevector_label(step_index)
+            statevector = (
+                self._get_statevector(result, label)
+                if label in result.data()
+                else fallback_statevector
+            )
+            bloch_vectors.append(
+                {
+                    target: self._bloch_vector(statevector, target)
+                    for operation in step
+                    if operation["type"] == "Bloch"
+                    for target in operation["targets"]
+                },
+            )
+
+        return bloch_vectors
+
+    @staticmethod
+    def _step_has_bloch_display(step: list) -> bool:
+        return any(operation["type"] == "Bloch" for operation in step)
+
+    def _bloch_statevector_label(self, step_index: int) -> str:
+        return f"{self._BLOCH_STATEVECTOR_LABEL_PREFIX}{step_index}"
+
+    @staticmethod
+    def _bloch_vector(
+        statevector: QiskitStepAmplitudes,
+        target: int,
+    ) -> dict[str, float]:
+        x = 0.0
+        y = 0.0
+        z = 0.0
+        target_mask = 1 << target
+
+        for index, amplitude0 in statevector.items():
+            if index & target_mask:
+                continue
+
+            amplitude1 = statevector.get(index | target_mask, 0j)
+            coherence = amplitude0.conjugate() * amplitude1
+            x += 2.0 * float(coherence.real)
+            y += 2.0 * float(coherence.imag)
+            z += float(abs(amplitude0) ** 2 - abs(amplitude1) ** 2)
+
+        return {"x": x, "y": y, "z": z}

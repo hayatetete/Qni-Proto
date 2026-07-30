@@ -15,11 +15,16 @@ from qiskit import (  # type: ignore[import-untyped]
 )
 from qiskit.circuit.library import (  # type: ignore[import-untyped]
     HGate,
+    PhaseGate,
+    RXGate,
+    RYGate,
+    RZGate,
     SdgGate,
     SGate,
     SXGate,
     TdgGate,
     TGate,
+    XGate,
     YGate,
     ZGate,
 )
@@ -60,6 +65,7 @@ class ControllableOperation(TypedDict):
     type: str
     targets: list[int]
     controls: list[int]
+    antiControls: list[int]
 
 
 OperationMethod = Callable[
@@ -153,6 +159,13 @@ class QiskitCircuitBuilder:
             "S†": self._apply_s_dagger_operation,
             "T": self._apply_t_operation,
             "T†": self._apply_t_dagger_operation,
+            "P": self._apply_phase_operation,
+            "Rx": self._apply_rx_operation,
+            "Ry": self._apply_ry_operation,
+            "Rz": self._apply_rz_operation,
+            "QFT": self._apply_qft_operation,
+            "QFT†": self._apply_qft_dagger_operation,
+            "Bloch": self._apply_display_operation,
             "Swap": self._apply_swap_operation,
             "•": self._apply_controlled_z_operation,
             "|0>": self._apply_write0,
@@ -190,7 +203,7 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, HGate())
         else:
             circuit.h(operation["targets"])
@@ -200,10 +213,8 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
-            operation = cast("ControllableOperation", operation)
-            for target in operation["targets"]:
-                circuit.mcx(operation["controls"], target)
+        if QiskitCircuitBuilder._has_controls(operation):
+            QiskitCircuitBuilder._apply_controlled_u(circuit, operation, XGate())
         else:
             circuit.x(operation["targets"])
 
@@ -212,7 +223,7 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, YGate())
         else:
             circuit.y(operation["targets"])
@@ -222,7 +233,7 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, ZGate())
         else:
             circuit.z(operation["targets"])
@@ -232,7 +243,7 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, SXGate())
         else:
             circuit.append(SXGate(), qargs=operation["targets"])
@@ -242,7 +253,7 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, SGate())
         else:
             circuit.s(operation["targets"])
@@ -252,7 +263,7 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, SdgGate())
         else:
             circuit.sdg(operation["targets"])
@@ -262,7 +273,7 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, TGate())
         else:
             circuit.t(operation["targets"])
@@ -272,10 +283,80 @@ class QiskitCircuitBuilder:
         circuit: QuantumCircuit,
         operation: BasicOperation | ControllableOperation,
     ) -> None:
-        if "controls" in operation:
+        if self._has_controls(operation):
             self._apply_controlled_u(circuit, operation, TdgGate())
         else:
             circuit.tdg(operation["targets"])
+
+    def _apply_phase_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -> None:
+        gate = PhaseGate(self._angle(operation))
+        if self._has_controls(operation):
+            self._apply_controlled_u(circuit, operation, gate)
+        else:
+            for target in operation["targets"]:
+                circuit.p(self._angle(operation), target)
+
+    def _apply_rx_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -> None:
+        gate = RXGate(self._angle(operation))
+        if self._has_controls(operation):
+            self._apply_controlled_u(circuit, operation, gate)
+        else:
+            for target in operation["targets"]:
+                circuit.rx(self._angle(operation), target)
+
+    def _apply_ry_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -> None:
+        gate = RYGate(self._angle(operation))
+        if self._has_controls(operation):
+            self._apply_controlled_u(circuit, operation, gate)
+        else:
+            for target in operation["targets"]:
+                circuit.ry(self._angle(operation), target)
+
+    def _apply_rz_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -> None:
+        gate = RZGate(self._angle(operation))
+        if self._has_controls(operation):
+            self._apply_controlled_u(circuit, operation, gate)
+        else:
+            for target in operation["targets"]:
+                circuit.rz(self._angle(operation), target)
+
+    def _apply_qft_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -> None:
+        self._apply_qft(circuit, operation, inverse=False)
+
+    def _apply_qft_dagger_operation(
+        self,
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+    ) -> None:
+        self._apply_qft(circuit, operation, inverse=True)
+
+    @staticmethod
+    def _apply_display_operation(
+        circuit: QuantumCircuit,
+        operation: BasicOperation,
+    ) -> None:
+        if operation["targets"]:
+            circuit.id(operation["targets"])
 
     def _apply_swap_operation(
         self,
@@ -324,6 +405,87 @@ class QiskitCircuitBuilder:
         gate: ControlledGate,
     ) -> None:
         operation = cast("ControllableOperation", operation)
-        u = gate.control(num_ctrl_qubits=len(operation["controls"]))
+        controls = QiskitCircuitBuilder._control_bits(operation)
+        u = gate.control(
+            num_ctrl_qubits=len(controls),
+            ctrl_state=QiskitCircuitBuilder._control_state(operation),
+        )
         for target in operation["targets"]:
-            circuit.append(u, qargs=operation["controls"] + [target])
+            circuit.append(u, qargs=controls + [target])
+
+    @staticmethod
+    def _has_controls(operation: BasicOperation | ControllableOperation) -> bool:
+        return bool(operation.get("controls", []) or operation.get("antiControls", []))
+
+    @staticmethod
+    def _control_bits(operation: BasicOperation | ControllableOperation) -> list[int]:
+        return operation.get("controls", []) + operation.get("antiControls", [])
+
+    @staticmethod
+    def _control_state(operation: BasicOperation | ControllableOperation) -> int:
+        controls = operation.get("controls", [])
+        control_bits = QiskitCircuitBuilder._control_bits(operation)
+        return sum(1 << index for index, bit in enumerate(control_bits) if bit in controls)
+
+    @staticmethod
+    def _angle(operation: BasicOperation | ControllableOperation) -> float:
+        value = operation.get("angle", "π/2")
+        return QiskitCircuitBuilder._parse_angle(value)
+
+    @staticmethod
+    def _parse_angle(value: str | int | float) -> float:
+        if isinstance(value, int | float):
+            return float(value)
+
+        normalized = value.strip().replace("pi", "π")
+        if normalized == "π":
+            return 3.141592653589793
+        if normalized == "-π":
+            return -3.141592653589793
+        if "π" not in normalized:
+            return float(normalized)
+
+        sign = -1.0 if normalized.startswith("-") else 1.0
+        unsigned = normalized[1:] if normalized.startswith("-") else normalized
+        if unsigned == "π":
+            return sign * 3.141592653589793
+        if unsigned.startswith("π/"):
+            return sign * 3.141592653589793 / float(unsigned[2:])
+        if unsigned.endswith("π"):
+            coefficient = unsigned[:-1].rstrip("*")
+            return sign * float(coefficient) * 3.141592653589793
+        raise ValueError(f"Unsupported angle: {value}")
+
+    @staticmethod
+    def _apply_qft(
+        circuit: QuantumCircuit,
+        operation: BasicOperation | ControllableOperation,
+        *,
+        inverse: bool,
+    ) -> None:
+        targets = operation["targets"]
+        if not targets:
+            return
+
+        ordered_targets = sorted(targets)
+        span = int(operation.get("span", len(ordered_targets)))
+        qft_targets = ordered_targets[:span]
+        if inverse:
+            for i in range(span - 1, -1, -1):
+                for j in range(span - i - 1, 0, -1):
+                    circuit.cp(
+                        -3.141592653589793 / (2**j),
+                        qft_targets[i + j],
+                        qft_targets[i],
+                    )
+                circuit.h(qft_targets[i])
+            return
+
+        for i in range(span):
+            circuit.h(qft_targets[i])
+            for j in range(1, span - i):
+                circuit.cp(
+                    3.141592653589793 / (2**j),
+                    qft_targets[i + j],
+                    qft_targets[i],
+                )

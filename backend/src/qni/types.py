@@ -83,6 +83,7 @@ class QiskitStepResult(TypedDict, total=False):
 
     amplitudes: QiskitStepAmplitudes | None
     measuredBits: MeasuredBits
+    blochVectors: dict[int, dict[str, float]]
 
 
 class DeviceType(Enum):
