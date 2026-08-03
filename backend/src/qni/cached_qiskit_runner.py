@@ -6,6 +6,8 @@ in the Qni simulator.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -71,7 +73,18 @@ class CachedQiskitRunner:
             when either circuit_id or until_step_index changes.
 
         """
-        cache_key = (request_data.circuit_id, request_data.until_step_index)
+        circuit_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "steps": request_data.steps,
+                    "qubit_count": request_data.qubit_count,
+                    "device": request_data.device.value,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+        ).hexdigest()
+        cache_key = (circuit_fingerprint, request_data.until_step_index)
 
         if self.last_cache_key == cache_key:
             self.logger.info("Cache hit for circuit_key: %s", cache_key)

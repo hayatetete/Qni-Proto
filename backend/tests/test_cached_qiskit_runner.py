@@ -28,10 +28,8 @@ class TestCachedQiskitRunner(unittest.TestCase):
 
         result = self.cached_runner.run(self.request_data)
         assert result == {"result": "test_result"}
-        self.logger.info.assert_called_with(
-            "Cache miss for circuit_key: %s",
-            ("test_circuit", 3),
-        )
+        assert self.logger.info.call_args.args[0] == "Cache miss for circuit_key: %s"
+        assert self.logger.info.call_args.args[1][1] == 3
 
     @patch("qni.qiskit_runner.QiskitRunner.run_circuit")
     def test_run_and_cache_hit(self, mock_run_circuit):
@@ -44,7 +42,23 @@ class TestCachedQiskitRunner(unittest.TestCase):
         # Second run to test cache hit
         result = self.cached_runner.run(self.request_data)
         assert result == {"result": "test_result"}
-        self.logger.info.assert_called_with(
-            "Cache hit for circuit_key: %s",
-            ("test_circuit", 3),
+        assert self.logger.info.call_args.args[0] == "Cache hit for circuit_key: %s"
+        assert self.logger.info.call_args.args[1][1] == 3
+
+    @patch("qni.qiskit_runner.QiskitRunner.run_circuit")
+    def test_same_id_with_different_steps_is_not_a_cache_hit(self, mock_run_circuit):
+        mock_run_circuit.return_value = {"result": "test_result"}
+        changed_request = CircuitRequestData(
+            ImmutableMultiDict([
+                ("id", "test_circuit"),
+                ("qubitCount", "5"),
+                ("untilStepIndex", "3"),
+                ("steps", '[{"type": "X", "targets": [0]}]'),
+                ("device", "GPU"),
+            ]),
         )
+
+        self.cached_runner.run(self.request_data)
+        self.cached_runner.run(changed_request)
+
+        assert mock_run_circuit.call_count == 2
