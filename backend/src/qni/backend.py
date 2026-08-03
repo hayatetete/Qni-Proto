@@ -28,7 +28,10 @@ from qni.logging_config import setup_custom_logger
 from qni.qiskit_circuit_builder import QiskitCircuitBuilder
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
 CORS(app)
+
+MAX_DEMO_QUBITS = 8
 
 setup_custom_logger()
 cached_qiskit_runner = CachedQiskitRunner(app.logger)
@@ -113,6 +116,9 @@ def handle_circuit_request() -> tuple[Response, int]:
 
     """
     circuit_request_data = CircuitRequestData(request.form)
+    validation_error = _validate_demo_request(circuit_request_data)
+    if validation_error is not None:
+        return jsonify({"error": validation_error}), 400
     _log_request_data(circuit_request_data)
 
     qiskit_step_results = cached_qiskit_runner.run(circuit_request_data)
@@ -122,6 +128,19 @@ def handle_circuit_request() -> tuple[Response, int]:
     )
     app.logger.info("step_results = %s", step_results)
     return jsonify(step_results), 200
+
+
+def _validate_demo_request(request_data: CircuitRequestData) -> str | None:
+    """Reject inputs outside the bounded state-vector demo contract."""
+    if request_data.qubit_count < 1 or request_data.qubit_count > MAX_DEMO_QUBITS:
+        return f"qubitCount must be between 1 and {MAX_DEMO_QUBITS}."
+    if not isinstance(request_data.steps, list):
+        return "steps must be a list."
+    if request_data.until_step_index < 0 or request_data.until_step_index >= len(
+        request_data.steps
+    ):
+        return "untilStepIndex is outside the circuit steps."
+    return None
 
 
 class EmptyStepsError(ValueError):

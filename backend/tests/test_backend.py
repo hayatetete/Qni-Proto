@@ -9,8 +9,18 @@ def test_post_empty_circuit():
     response = app.test_client().post("/backend.json", data={})
     res = json.loads(response.data.decode("utf-8"))
 
-    assert response.status_code == 200
-    assert len(res) == 0
+    assert response.status_code == 400
+    assert "qubitCount" in res["error"]
+
+
+def test_rejects_circuit_above_demo_qubit_limit():
+    response = app.test_client().post(
+        "/backend.json",
+        data={"qubitCount": 9, "untilStepIndex": 0, "steps": "[[]]"},
+    )
+
+    assert response.status_code == 400
+    assert "between 1 and 8" in response.get_json()["error"]
 
 
 def test_post_simple_circuit():
