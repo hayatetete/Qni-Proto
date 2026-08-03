@@ -27,6 +27,7 @@ _CIRCUIT_STEP_LAYOUTS: dict[
 DEFAULT_VIEWER_HEIGHT = 480
 DEFAULT_VIEWER_WIDTH = "100%"
 DEFAULT_BACKEND_PORT = 8000
+MAX_DEMO_QUBITS = 8
 QniView = Literal["notebook", "state", "circuit"]
 QniInteractionMode = Literal["edit", "inspect"]
 QniStep = int | Literal["last"]
@@ -548,6 +549,11 @@ def open(
     if quri_code is not None:
         steps, inferred_qubit_count, warnings = quri_code_to_steps(quri_code)
         qubit_count = qubit_count if qubit_count is not None else inferred_qubit_count
+    if qubit_count is not None and not 1 <= qubit_count <= MAX_DEMO_QUBITS:
+        raise ValueError(
+            f"QniNotebook's initial demo supports 1-{MAX_DEMO_QUBITS} qubits; "
+            f"got {qubit_count}."
+        )
     if view != "notebook" and height == DEFAULT_VIEWER_HEIGHT:
         height = _preferred_viewer_height(view, steps or [], qubit_count)
     if view != "notebook" and width == DEFAULT_VIEWER_WIDTH:
@@ -991,22 +997,27 @@ def quri_circuit_to_steps(
         return steps, qubit_count, ()
 
     steps: list[list[dict[str, Any]]] = []
-    warnings: list[str] = []
+    unsupported: list[str] = []
     for index, gate in enumerate(circuit.gates):
+        control_values = tuple(getattr(gate, "control_values", ()))
+        if control_values and any(int(value) != 1 for value in control_values):
+            gate_name = getattr(gate, "name", type(gate).__name__)
+            unsupported.append(f"{gate_name} with anti-control at gate index {index}")
+            continue
         operation = _quri_gate_to_operation(gate)
         if operation is None:
             gate_name = getattr(gate, "name", type(gate).__name__)
-            warnings.append(f'QURI gate "{gate_name}" at index {index} was skipped.')
+            unsupported.append(f'{gate_name} at gate index {index}')
             continue
-        if getattr(gate, "name", None) in {"RX", "RY", "RZ", "U1"}:
-            warnings.append(
-                f'QURI gate "{gate.name}" at index {index} was displayed, '
-                "but its angle is not restored by the current Qni loader."
-            )
         if operation:
             steps.append([operation])
 
-    return steps, int(circuit.qubit_count), tuple(warnings)
+    if unsupported:
+        raise ValueError(
+            "Unsupported QURI Parts operations; visualization stopped to avoid "
+            "showing a different circuit: " + ", ".join(unsupported)
+        )
+    return steps, int(circuit.qubit_count), ()
 
 
 def _remember_circuit_step_layout(
@@ -1287,6 +1298,8 @@ def _quri_gate_to_operation(gate: Any) -> dict[str, Any] | None:
     if name == "SWAP" and len(targets) == 2:
         return _operation("Swap", targets)
     if name == "Measurement":
+        if classical_indices and tuple(map(int, classical_indices)) != tuple(targets):
+            return None
         operation = _operation("Measure", targets)
         if classical_indices:
             operation["classical_indices"] = [

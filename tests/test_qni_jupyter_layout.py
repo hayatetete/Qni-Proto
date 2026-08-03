@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from unittest.mock import patch
 
+import pytest
+
 from qni_jupyter import qni
 
 
@@ -134,3 +136,24 @@ def test_explicit_display_names_select_the_expected_panels() -> None:
 
         qni.show_circuit(circuit, height=300)
         assert open_view.call_args.kwargs["view"] == "circuit"
+class _UnsupportedGate:
+    name = "UnsupportedGate"
+    target_indices = (0,)
+    control_indices = ()
+    params = ()
+    classical_indices = ()
+
+
+class _CircuitWithUnsupportedGate:
+    qubit_count = 1
+    gates = (_UnsupportedGate(),)
+
+
+def test_unsupported_quri_gate_stops_visualization() -> None:
+    with pytest.raises(ValueError, match="visualization stopped"):
+        qni.quri_circuit_to_steps(_CircuitWithUnsupportedGate())
+
+
+def test_demo_qubit_limit_is_enforced_before_starting_servers() -> None:
+    with pytest.raises(ValueError, match="supports 1-8 qubits"):
+        qni.open(steps=[[]], qubit_count=9, display=False)
