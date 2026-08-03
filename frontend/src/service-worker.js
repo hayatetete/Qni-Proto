@@ -1,5 +1,5 @@
 import { Simulator } from "@qni/simulator";
-import { BACKEND_URL } from "./constants";
+import { BACKEND_URL, MAX_QUBIT_COUNT, MAX_SIMULATION_PAYLOAD_BYTES } from "./constants";
 const useGpu = import.meta.env.VITE_USE_GPU === "true";
 
 // Install SW
@@ -15,6 +15,12 @@ self.addEventListener("message", (event) => {
   const amplitudeIndices = event.data.amplitudeIndices;
   const steps = event.data.steps;
   const requestType = event.data.requestType || "circuit";
+  const requestId = event.data.requestId;
+  if (qubitCount < 1 || qubitCount > MAX_QUBIT_COUNT) {
+    self.postMessage({ type: "error", requestId, message: `This demo supports 1-${MAX_QUBIT_COUNT} qubits.` });
+    self.postMessage({ type: "finish", requestId });
+    return;
+  }
   const simulator = new Simulator("0".repeat(qubitCount));
   const vector = simulator.state.matrix.clone();
   const amplitudes = [];
@@ -37,9 +43,13 @@ self.addEventListener("message", (event) => {
         useGpu: useGpu,
         requestType: requestType,
       });
+      if (new TextEncoder().encode(params.toString()).byteLength > MAX_SIMULATION_PAYLOAD_BYTES) {
+        throw new Error("Circuit payload exceeds the 256 KiB demo limit.");
+      }
 
       const response = await fetch(BACKEND_URL, {
         method: "POST",
+        signal: AbortSignal.timeout(15_000),
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
@@ -57,7 +67,9 @@ self.addEventListener("message", (event) => {
           );
         }
 
-        throw new Error("Failed to connect to Qni's backend endpoint.");
+        let detail = "";
+        try { detail = (await response.json()).error || ""; } catch { /* no JSON body */ }
+        throw new Error(detail || `Simulation failed (HTTP ${response.status}).`);
       }
 
       const jsondata = await response.json();
@@ -67,6 +79,7 @@ self.addEventListener("message", (event) => {
           const stepResult = jsondata[i];
           self.postMessage({
             type: "step",
+            requestId,
             step: i,
             amplitudes: stepResult["amplitudes"],
             blochVectors: stepResult["blochVectors"],
@@ -77,14 +90,20 @@ self.addEventListener("message", (event) => {
       } else if (requestType === "export") {
         self.postMessage({
           type: "export",
+          requestId,
           qasm3: jsondata.qasm3,
         });
       }
     } catch (error) {
       console.error(error);
+      self.postMessage({
+        type: "error",
+        requestId,
+        message: error instanceof Error ? error.message : "Simulation failed.",
+      });
     }
 
-    self.postMessage({ type: "finish" });
+    self.postMessage({ type: "finish", requestId });
   }
 
   call_backend();

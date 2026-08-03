@@ -78,6 +78,7 @@ export class App {
   private jupyterRightPane: "code" | "state-vector" = "state-vector";
   private jupyterViewMode: JupyterViewMode = "notebook";
   private jupyterReadOnly = false;
+  private simulationRequestId = 0;
   private jupyterZoom = 1;
   private jupyterRenderedZoom = 1;
   private readonly jupyterZoomMin = 0.5;
@@ -795,7 +796,6 @@ export class App {
     this.circuitFrame.on(OPERATION_EVENTS.GRABBED, this.grabGate, this);
     this.circuitFrame.on(OPERATION_EVENTS.MOUSE_LEFT, this.resetCursor, this);
     this.circuitFrame.on(OPERATION_EVENTS.DISCARDED, this.gateDiscarded, this);
-
     this.circuitFrame.on(
       CIRCUIT_STEP_EVENTS.ACTIVATED,
       this.runSimulator,
@@ -862,6 +862,18 @@ export class App {
   }
 
   protected handleServiceWorkerMessage(event: MessageEvent): void {
+    if (event.data.requestId !== this.simulationRequestId) {
+      return;
+    }
+    if (event.data.type === "error") {
+      this.showSimulationError(String(event.data.message || "Simulation failed."));
+      return;
+    }
+    if (event.data.type === "finish") {
+      this.element.dataset.state = "idle";
+      this.scheduleJupyterViewerResize();
+      return;
+    }
     if (!this.stateVector) {
       return;
     }
@@ -914,11 +926,24 @@ export class App {
 
     // ページの <div id="app" data-state="running"></div> を
     // <div id="app" data-state="idle"></div> に変更
-    const eventType = event.data.type;
-    if (eventType === "finish") {
-      this.element.dataset.state = "idle";
-      this.scheduleJupyterViewerResize();
+  }
+
+  private showSimulationError(message: string): void {
+    let banner = document.getElementById("simulation-error");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "simulation-error";
+      banner.setAttribute("role", "alert");
+      Object.assign(banner.style, {
+        position: "fixed", left: "12px", right: "12px", bottom: "12px",
+        zIndex: "100", padding: "10px 14px", borderRadius: "8px",
+        color: "#991b1b", background: "#fee2e2", border: "1px solid #fecaca",
+        font: "14px system-ui, sans-serif",
+      });
+      document.body.appendChild(banner);
     }
+    banner.textContent = `QniNotebook: ${message}`;
+    banner.hidden = false;
   }
 
   private updateStateVectorAmplitudes(amplitudes: {
@@ -1392,7 +1417,10 @@ export class App {
   }
 
   private postMessageToWorker(requestType: string = "circuit") {
+    this.simulationRequestId += 1;
+    document.getElementById("simulation-error")?.setAttribute("hidden", "");
     this.worker.postMessage({
+      requestId: this.simulationRequestId,
       circuitJson: this.circuit.toJSON(),
       qubitCount: this.stateVector.qubitCount,
       untilStepIndex: this.circuit.activeStepIndex,

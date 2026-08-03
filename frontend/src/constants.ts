@@ -1,5 +1,7 @@
 export const MIN_QUBIT_COUNT = 1;
-export const MAX_QUBIT_COUNT = 32;
+// The initial notebook demo intentionally uses a complete state vector.
+export const MAX_QUBIT_COUNT = 8;
+export const MAX_SIMULATION_PAYLOAD_BYTES = 256 * 1024;
 
 const defaultBackendUrl =
   import.meta.env.MODE === "development"
