@@ -1,4 +1,9 @@
 import { App } from "./src/app";
+import { DropdownMenu } from "./src/dropdown-menu";
+
+// The menu is plain DOM and should work immediately, without waiting for the
+// Pixi application and simulator worker to finish initializing.
+new DropdownMenu();
 
 /** The PixiJS app Application instance, shared across the project */
 export const app = App.instance;
