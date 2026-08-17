@@ -1,0 +1,12 @@
+services:
+  qni-notebook-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile.demo
+    environment:
+      QNI_FRONTEND_PORT: "${QNI_DEMO_FRONTEND_PORT:-5173}"
+      QNI_BACKEND_PORT: "${QNI_DEMO_BACKEND_PORT:-8000}"
+    ports:
+      - "${QNI_DEMO_FRONTEND_PORT:-5173}:${QNI_DEMO_FRONTEND_PORT:-5173}"
+      - "${QNI_DEMO_BACKEND_PORT:-8000}:${QNI_DEMO_BACKEND_PORT:-8000}"
+      - "${QNI_DEMO_JUPYTER_PORT:-8888}:8888"
