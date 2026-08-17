@@ -3,7 +3,6 @@ import { BlochSphere } from "./bloch-sphere";
 import { CircuitFrame } from "./circuit-frame";
 import { CircuitStep } from "./circuit-step";
 import { Colors } from "./colors";
-import { DropdownMenu } from "./dropdown-menu";
 import { Dropzone } from "./dropzone";
 import { FrameDivider } from "./frame-divider";
 import { OperationComponent } from "./operation-component";
@@ -191,8 +190,6 @@ export class App {
           enableNotebookCell: this.isJupyterEntry,
         });
       }
-
-      new DropdownMenu();
 
       this.setupShareMenu();
 
@@ -552,7 +549,7 @@ export class App {
   }
 
   private jupyterToolbarHeight(): number {
-    return this.jupyterViewMode === "notebook" && !this.jupyterReadOnly
+    return this.jupyterViewMode === "notebook"
       ? App.JUPYTER_TOOLBAR_HEIGHT
       : 0;
   }
@@ -655,6 +652,7 @@ export class App {
 
   private applyJupyterDomChrome(): void {
     const menuContainer = document.getElementById("menu-container");
+    const demoHeader = document.getElementById("demo-header");
     if (menuContainer) {
       menuContainer.classList.toggle(
         "hidden",
@@ -662,6 +660,12 @@ export class App {
           this.jupyterViewMode === "state" ||
           this.jupyterViewMode === "circuit",
       );
+    }
+    if (demoHeader) {
+      const visible =
+        this.jupyterReadOnly && this.jupyterViewMode === "notebook";
+      demoHeader.classList.toggle("hidden", !visible);
+      demoHeader.classList.toggle("flex", visible);
     }
   }
 
