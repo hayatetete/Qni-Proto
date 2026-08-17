@@ -29,6 +29,18 @@ from qni.types import (
     QiskitStepResult,
 )
 
+MAX_SIMULATION_SECONDS = 10
+
+
+class SimulationTimeoutError(TimeoutError):
+    """Raised when the bounded demo simulation exceeds its execution limit."""
+
+    def __init__(self) -> None:
+        """Initialize the timeout with the public demo limit."""
+        super().__init__(
+            f"Simulation exceeded the {MAX_SIMULATION_SECONDS}-second demo limit."
+        )
+
 
 class BasicOperation(TypedDict):
     """A dictionary type representing a basic quantum operation.
@@ -247,12 +259,24 @@ class QiskitRunner:
         if device == DeviceType.GPU:
             backend.set_options(device="GPU", cuStateVec_enable=True)
 
-        circuit_transpiled = transpile(self.circuit, backend=backend)
+        # State inspection must preserve the logical basis ordering. Higher
+        # optimization levels may absorb a trailing SWAP into the final layout,
+        # which changes the indices of the saved state vector.
+        circuit_transpiled = transpile(
+            self.circuit,
+            backend=backend,
+            optimization_level=0,
+        )
 
-        return backend.run(circuit_transpiled, shots=1, memory=True).result()
+        job = backend.run(circuit_transpiled, shots=1, memory=True)
+        try:
+            return job.result(timeout=MAX_SIMULATION_SECONDS)
+        except TimeoutError as exc:
+            job.cancel()
+            raise SimulationTimeoutError from exc
 
+    @staticmethod
     def _get_statevector(
-        self,
         result: Result,
         label: str,
     ) -> dict[int, QiskitAmplitude]:

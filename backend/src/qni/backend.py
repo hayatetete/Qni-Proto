@@ -26,6 +26,7 @@ from qni.cached_qiskit_runner import CachedQiskitRunner
 from qni.circuit_request_data import CircuitRequestData
 from qni.logging_config import setup_custom_logger
 from qni.qiskit_circuit_builder import QiskitCircuitBuilder
+from qni.qiskit_runner import SimulationTimeoutError
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
@@ -40,7 +41,13 @@ editor_drafts: dict[str, dict] = {}
 
 @app.route("/editor-drafts/<draft_id>", methods=["GET", "PUT", "DELETE"])
 def editor_draft(draft_id: str) -> tuple[Response, int]:
-    """Store and retrieve the latest circuit from one Qni editor session."""
+    """Store and retrieve the latest circuit from one Qni editor session.
+
+    Returns
+    -------
+        tuple[Response, int]: JSON response and HTTP status code.
+
+    """
     if request.method == "DELETE":
         editor_drafts.pop(draft_id, None)
         return jsonify({"ok": True}), 200
@@ -56,13 +63,15 @@ def editor_draft(draft_id: str) -> tuple[Response, int]:
     qubit_count = payload.get("qubit_count")
     code = payload.get("code")
     warnings = payload.get("warnings", [])
-    if (
-        not isinstance(steps, list)
-        or not isinstance(qubit_count, int)
-        or qubit_count < 1
-        or not isinstance(code, str)
-        or not isinstance(warnings, list)
-        or not all(isinstance(warning, str) for warning in warnings)
+    valid_qubit_count = isinstance(qubit_count, int) and qubit_count >= 1
+    valid_warnings = isinstance(warnings, list) and all(
+        isinstance(warning, str) for warning in warnings
+    )
+    if not (
+        isinstance(steps, list)
+        and valid_qubit_count
+        and isinstance(code, str)
+        and valid_warnings
     ):
         return jsonify({"error": "Invalid editor draft"}), 400
 
@@ -121,7 +130,11 @@ def handle_circuit_request() -> tuple[Response, int]:
         return jsonify({"error": validation_error}), 400
     _log_request_data(circuit_request_data)
 
-    qiskit_step_results = cached_qiskit_runner.run(circuit_request_data)
+    try:
+        qiskit_step_results = cached_qiskit_runner.run(circuit_request_data)
+    except SimulationTimeoutError as exc:
+        app.logger.warning("Simulation timed out: %s", exc)
+        return jsonify({"error": str(exc)}), 504
     step_results = _convert_and_filter_qiskit_step_results(
         qiskit_step_results,
         circuit_request_data,
@@ -131,7 +144,13 @@ def handle_circuit_request() -> tuple[Response, int]:
 
 
 def _validate_demo_request(request_data: CircuitRequestData) -> str | None:
-    """Reject inputs outside the bounded state-vector demo contract."""
+    """Reject inputs outside the bounded state-vector demo contract.
+
+    Returns
+    -------
+        str | None: Validation error, or ``None`` when the request is valid.
+
+    """
     if request_data.qubit_count < 1 or request_data.qubit_count > MAX_DEMO_QUBITS:
         return f"qubitCount must be between 1 and {MAX_DEMO_QUBITS}."
     if not isinstance(request_data.steps, list):

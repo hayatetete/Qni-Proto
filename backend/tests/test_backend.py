@@ -1,7 +1,9 @@
 import json
 from math import sqrt
+from unittest.mock import patch
 
 from qni.backend import app, editor_drafts
+from qni.qiskit_runner import SimulationTimeoutError
 from tests.conftest import assert_amplitudes_approx
 
 
@@ -21,6 +23,44 @@ def test_rejects_circuit_above_demo_qubit_limit():
 
     assert response.status_code == 400
     assert "between 1 and 8" in response.get_json()["error"]
+
+
+def test_rejects_step_index_outside_circuit():
+    response = app.test_client().post(
+        "/backend.json",
+        data={"qubitCount": 2, "untilStepIndex": 1, "steps": "[[]]"},
+    )
+
+    assert response.status_code == 400
+    assert "outside the circuit steps" in response.get_json()["error"]
+
+
+def test_rejects_payload_above_demo_limit():
+    response = app.test_client().post(
+        "/backend.json",
+        data={
+            "qubitCount": 2,
+            "untilStepIndex": 0,
+            "steps": "[[]]",
+            "padding": "x" * (256 * 1024),
+        },
+    )
+
+    assert response.status_code == 413
+
+
+def test_reports_simulation_timeout():
+    with patch(
+        "qni.backend.cached_qiskit_runner.run",
+        side_effect=SimulationTimeoutError(),
+    ):
+        response = app.test_client().post(
+            "/backend.json",
+            data={"qubitCount": 2, "untilStepIndex": 0, "steps": "[[]]"},
+        )
+
+    assert response.status_code == 504
+    assert "10-second demo limit" in response.get_json()["error"]
 
 
 def test_post_simple_circuit():
