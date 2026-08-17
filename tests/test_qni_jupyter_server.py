@@ -33,3 +33,25 @@ def test_frontend_uses_vendored_yarn_when_available(tmp_path) -> None:
     command = popen.call_args.args[0]
     assert command[:3] == ["node", str(vendored_yarn), "dev"]
     server.close()
+
+
+def test_frontend_receives_configured_backend_url(tmp_path) -> None:
+    process = Mock()
+    process.poll.return_value = None
+    server = QniJupyterServer(
+        tmp_path,
+        port=15173,
+        backend_url="http://127.0.0.1:18000/backend.json",
+    )
+
+    with (
+        patch("qni_jupyter.qni.subprocess.Popen", return_value=process) as popen,
+        patch.object(server, "_wait_until_ready"),
+    ):
+        server.start()
+
+    environment = popen.call_args.kwargs["env"]
+    assert environment["VITE_BACKEND_URL"] == (
+        "http://127.0.0.1:18000/backend.json"
+    )
+    server.close()

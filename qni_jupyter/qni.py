@@ -583,16 +583,19 @@ def open(
         if port is not None
         else int(os.environ.get("QNI_FRONTEND_PORT", 0)) or None
     )
+    public_host = os.environ.get("QNI_PUBLIC_HOST", "127.0.0.1")
     backend_server = _backend_server(backend_port)
     backend_server.start()
 
-    server = _server(frontend_port)
+    backend_base_url = f"http://{public_host}:{backend_server.port}"
+    server = _server(
+        frontend_port,
+        backend_url=f"{backend_base_url}/backend.json",
+    )
     server.start()
 
     editable = mode == "edit"
     draft_id = uuid.uuid4().hex if editable else None
-    backend_base_url = f"http://127.0.0.1:{backend_server.port}"
-
     state = {
         "steps": steps or [],
         "view": view,
@@ -611,7 +614,7 @@ def open(
     viewer_class = QniEditor if editable else QniViewer
     viewer = viewer_class(
         url=(
-            f"http://{os.environ.get('QNI_PUBLIC_HOST', '127.0.0.1')}:{server.port}/jupyter.html"
+            f"http://{public_host}:{server.port}/jupyter.html"
             f"?state={encoded_state}&height={height}&qniCacheBust={cache_bust}"
         ),
         height=height,
