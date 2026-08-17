@@ -154,6 +154,26 @@ def test_unsupported_quri_gate_stops_visualization() -> None:
         qni.quri_circuit_to_steps(_CircuitWithUnsupportedGate())
 
 
+@pytest.mark.parametrize("gate_name", ["RX", "RY", "RZ", "U1"])
+def test_rotation_gate_stops_visualization_until_angles_are_preserved(
+    gate_name: str,
+) -> None:
+    circuit = FakeCircuit(1, [FakeGate(gate_name, (0,), params=(0.25,))])
+
+    with pytest.raises(ValueError, match=f"{gate_name} with a rotation angle"):
+        qni.quri_circuit_to_steps(circuit)
+
+
+def test_non_identity_measurement_mapping_stops_visualization() -> None:
+    circuit = FakeCircuit(
+        2,
+        [FakeGate("Measurement", (0,), classical_indices=(1,))],
+    )
+
+    with pytest.raises(ValueError, match="Measurement"):
+        qni.quri_circuit_to_steps(circuit)
+
+
 def test_demo_qubit_limit_is_enforced_before_starting_servers() -> None:
     with pytest.raises(ValueError, match="supports 1-8 qubits"):
         qni.open(steps=[[]], qubit_count=9, display=False)

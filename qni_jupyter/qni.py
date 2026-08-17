@@ -27,6 +27,7 @@ _CIRCUIT_STEP_LAYOUTS: dict[
 DEFAULT_VIEWER_HEIGHT = 480
 DEFAULT_VIEWER_WIDTH = "100%"
 DEFAULT_BACKEND_PORT = 8000
+DEFAULT_FRONTEND_PORT = 5173
 MAX_DEMO_QUBITS = 8
 QniView = Literal["notebook", "state", "circuit"]
 QniInteractionMode = Literal["edit", "inspect"]
@@ -282,8 +283,19 @@ class QniJupyterServer:
         self._log_file.write(f"port: {self.port}\n")
         self._log_file.flush()
 
+        vendored_yarn = self.frontend_dir / ".yarn" / "releases" / "yarn-4.4.1.cjs"
+        package_manager = (
+            ["node", str(vendored_yarn)] if vendored_yarn.is_file() else ["yarn"]
+        )
         self.process = subprocess.Popen(
-            ["yarn", "dev", "--host", "127.0.0.1", "--port", str(self.port)],
+            [
+                *package_manager,
+                "dev",
+                "--host",
+                os.environ.get("QNI_BIND_HOST", "127.0.0.1"),
+                "--port",
+                str(self.port),
+            ],
             cwd=self.frontend_dir,
             env=env,
             stdout=self._log_file,
@@ -408,8 +420,13 @@ class QniJupyterBackendServer:
                     "print('before import qni.backend', flush=True); "
                     "from qni.backend import app; "
                     "print('after import qni.backend', flush=True); "
-                    "app.run(host='127.0.0.1', port=%d, debug=False, use_reloader=False)"
-                ) % (str(backend_src), self.port),
+                    "app.run(host=%r, port=%d, debug=False, use_reloader=False)"
+                )
+                % (
+                    str(backend_src),
+                    os.environ.get("QNI_BIND_HOST", "127.0.0.1"),
+                    self.port,
+                ),
             ],
             cwd=backend_dir,
             env=env,
@@ -560,10 +577,16 @@ def open(
         width = _preferred_viewer_width(view, steps or [], qubit_count)
     active_step_index = _resolve_active_step_index(active_step, steps or [])
 
-    backend_server = _backend_server(DEFAULT_BACKEND_PORT)
+    backend_port = int(os.environ.get("QNI_BACKEND_PORT", DEFAULT_BACKEND_PORT))
+    frontend_port = (
+        port
+        if port is not None
+        else int(os.environ.get("QNI_FRONTEND_PORT", 0)) or None
+    )
+    backend_server = _backend_server(backend_port)
     backend_server.start()
 
-    server = _server(port)
+    server = _server(frontend_port)
     server.start()
 
     editable = mode == "edit"
@@ -588,7 +611,7 @@ def open(
     viewer_class = QniEditor if editable else QniViewer
     viewer = viewer_class(
         url=(
-            f"http://127.0.0.1:{server.port}/jupyter.html"
+            f"http://{os.environ.get('QNI_PUBLIC_HOST', '127.0.0.1')}:{server.port}/jupyter.html"
             f"?state={encoded_state}&height={height}&qniCacheBust={cache_bust}"
         ),
         height=height,
@@ -999,14 +1022,18 @@ def quri_circuit_to_steps(
     steps: list[list[dict[str, Any]]] = []
     unsupported: list[str] = []
     for index, gate in enumerate(circuit.gates):
+        gate_name = getattr(gate, "name", type(gate).__name__)
+        if gate_name in {"RX", "RY", "RZ", "U1"}:
+            unsupported.append(
+                f"{gate_name} with a rotation angle at gate index {index}"
+            )
+            continue
         control_values = tuple(getattr(gate, "control_values", ()))
         if control_values and any(int(value) != 1 for value in control_values):
-            gate_name = getattr(gate, "name", type(gate).__name__)
             unsupported.append(f"{gate_name} with anti-control at gate index {index}")
             continue
         operation = _quri_gate_to_operation(gate)
         if operation is None:
-            gate_name = getattr(gate, "name", type(gate).__name__)
             unsupported.append(f'{gate_name} at gate index {index}')
             continue
         if operation:
