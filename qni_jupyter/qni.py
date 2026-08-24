@@ -724,6 +724,7 @@ def circuit(
         width=width,
         port=port,
         view="circuit",
+        active_step="last",
         mode=mode,
         display=display,
     )
@@ -799,13 +800,14 @@ def show_circuit(
     port: int | None = None,
     display: bool = True,
 ) -> QniViewer | None:
-    """Show only the circuit, without the state-vector panel."""
+    """Show the circuit and any final measurement, without the state panel."""
     return open(
         circuit=circuit,
         height=height,
         width=width,
         port=port,
         view="circuit",
+        active_step="last",
         mode="inspect",
         display=display,
     )

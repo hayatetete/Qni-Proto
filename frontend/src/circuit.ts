@@ -142,11 +142,15 @@ export class Circuit extends Container {
   }
 
   compactForPresentation(): void {
+    const activeStepIndex = this.activeStepIndex;
     this.removeEmptySteps();
     if (this.steps.length === 0) {
       this.appendStep(this.minWireCount);
     }
     this.steps.forEach((step) => step.deactivate());
+    if (activeStepIndex !== null) {
+      this.fetchStep(Math.min(activeStepIndex, this.steps.length - 1)).activate();
+    }
     this.updateConnections();
     this.markerManager.update(this.steps);
   }
@@ -158,6 +162,14 @@ export class Circuit extends Container {
     this.interactiveChildren = true;
     this.markerManager.visible = true;
     this.steps.forEach((step) => step.setPresentationMode(enabled));
+  }
+
+  setStepMarkersVisible(visible: boolean): void {
+    this.markerManager.visible = visible;
+  }
+
+  get stepMarkersVisible(): boolean {
+    return this.markerManager.visible;
   }
 
   setDisplayScale(scale: number): void {

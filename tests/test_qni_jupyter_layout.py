@@ -136,6 +136,7 @@ def test_explicit_display_names_select_the_expected_panels() -> None:
 
         qni.show_circuit(circuit, height=300)
         assert open_view.call_args.kwargs["view"] == "circuit"
+        assert open_view.call_args.kwargs["active_step"] == "last"
 class _UnsupportedGate:
     name = "UnsupportedGate"
     target_indices = (0,)

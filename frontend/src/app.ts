@@ -584,6 +584,7 @@ export class App {
       this.jupyterViewMode === "circuit";
     this.circuitFrame.setPaletteVisible(!readOnlyMode && this.jupyterViewMode !== "circuit");
     this.circuit.setPresentationMode(readOnlyMode);
+    this.circuit.setStepMarkersVisible(this.jupyterViewMode === "notebook");
     this.stateVectorFrame.setContentPinnedToTopLeft(!this.jupyterReadOnly);
     this.stateVectorFrame.setPresentationInset(
       this.jupyterViewMode === "state" ? 8 : 0,
@@ -621,10 +622,14 @@ export class App {
     const contentTop =
       this.jupyterToolbarHeight() + this.jupyterSidePanelHeaderHeight();
 
+    const toolbarHeight = this.jupyterToolbarHeight();
     this.circuitFrame.visible = true;
     this.circuitFrame.x = 0;
-    this.circuitFrame.y = 0;
-    this.circuitFrame.resize(circuitWidth, this.app.screen.height);
+    this.circuitFrame.y = toolbarHeight;
+    this.circuitFrame.resize(
+      circuitWidth,
+      Math.max(0, this.app.screen.height - toolbarHeight),
+    );
 
     this.stateVectorFrame.x = circuitWidth;
     this.stateVectorFrame.repositionAndResize(
