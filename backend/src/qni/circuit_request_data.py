@@ -70,6 +70,11 @@ class CircuitRequestData:
         return self._form.get("untilStepIndex", 0, type=int)
 
     @property
+    def simulation_seed(self) -> int | None:
+        """Return the seed shared by all step requests from one viewer."""
+        return self._form.get("simulationSeed", None, type=int)
+
+    @property
     def steps(self) -> list[dict]:
         """Retrieves the list of steps from the form data.
 

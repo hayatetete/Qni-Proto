@@ -16,6 +16,7 @@ self.addEventListener("message", (event) => {
   const steps = event.data.steps;
   const requestType = event.data.requestType || "circuit";
   const requestId = event.data.requestId;
+  const simulationSeed = event.data.simulationSeed;
   if (qubitCount < 1 || qubitCount > MAX_QUBIT_COUNT) {
     self.postMessage({ type: "error", requestId, message: `This demo supports 1-${MAX_QUBIT_COUNT} qubits.` });
     self.postMessage({ type: "finish", requestId });
@@ -42,6 +43,7 @@ self.addEventListener("message", (event) => {
         steps: JSON.stringify(steps),
         useGpu: useGpu,
         requestType: requestType,
+        simulationSeed: simulationSeed,
       });
       if (new TextEncoder().encode(params.toString()).byteLength > MAX_SIMULATION_PAYLOAD_BYTES) {
         throw new Error("Circuit payload exceeds the 256 KiB demo limit.");

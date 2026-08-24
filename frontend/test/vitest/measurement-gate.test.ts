@@ -25,4 +25,11 @@ describe("MeasurementGate", () => {
   test("serialize", () => {
     expect(gate.serialize([0])).toEqual({ type: "Measure", targets: [0] });
   });
+
+  test("keeps a measurement received before its sprite is ready", () => {
+    expect(() => {
+      gate.value = 0;
+    }).not.toThrow();
+    expect(gate.value).toBe(0);
+  });
 });

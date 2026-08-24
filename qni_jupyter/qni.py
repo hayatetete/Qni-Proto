@@ -600,6 +600,7 @@ def open(
         "steps": steps or [],
         "view": view,
         "editable": editable,
+        "simulation_seed": uuid.uuid4().int & 0xFFFFFFFF,
         **(
             {"active_step_index": active_step_index}
             if active_step_index is not None

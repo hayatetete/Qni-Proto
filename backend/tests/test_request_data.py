@@ -14,6 +14,7 @@ def form_data():
         ("steps", '[{"type": "H", "targets": [0]}]'),
         ("amplitudeIndices", "0,1,2,3"),
         ("device", "GPU"),
+        ("simulationSeed", "12345"),
     ])
 
 
@@ -26,6 +27,7 @@ def test_request_data_initialization(form_data):
     assert request_data.steps == [{"type": "H", "targets": [0]}]
     assert request_data.amplitude_indices == [0, 1, 2, 3]
     assert request_data.device == DeviceType.GPU
+    assert request_data.simulation_seed == 12345
 
 
 def test_request_data_default_values():
@@ -38,3 +40,4 @@ def test_request_data_default_values():
     assert request_data.steps == []
     assert request_data.amplitude_indices == []
     assert request_data.device == DeviceType.CPU
+    assert request_data.simulation_seed is None

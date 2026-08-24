@@ -11,6 +11,7 @@ type JupyterInitialState = {
   editable?: boolean;
   draft_id?: string;
   backendUrl?: string;
+  simulation_seed?: number;
 };
 
 type CircuitJson = {
@@ -36,6 +37,9 @@ export function loadJupyterInitialState(app: App): void {
   }
 
   app.setJupyterViewMode(state.view ?? "notebook");
+  if (state.simulation_seed !== undefined) {
+    app.setSimulationSeed(state.simulation_seed);
+  }
   app.loadCircuitJson({
     ...toCircuitJson(state),
     editable: state.editable,
@@ -187,6 +191,14 @@ function parseInitialStateFromUrl(): JupyterInitialState | null {
     (!Number.isInteger(parsed.active_step_index) || parsed.active_step_index < 0)
   ) {
     throw new Error("Jupyter initial state active_step_index is invalid.");
+  }
+  if (
+    parsed.simulation_seed !== undefined &&
+    (!Number.isInteger(parsed.simulation_seed) ||
+      parsed.simulation_seed < 0 ||
+      parsed.simulation_seed > 0xffffffff)
+  ) {
+    throw new Error("Jupyter initial state simulation_seed is invalid.");
   }
 
   return parsed;

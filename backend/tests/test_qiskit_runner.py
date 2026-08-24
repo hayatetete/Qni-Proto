@@ -50,6 +50,27 @@ class TestQiskitRunner(unittest.TestCase):
         assert_complex_approx(amplitudes[2], 1 / 2, 0)
         assert_complex_approx(amplitudes[3], 1 / 2, 0)
 
+    def test_measurement_is_stable_for_the_same_viewer_seed(self):
+        steps = [
+            [{"type": "H", "targets": [0]}],
+            [{"type": "Measure", "targets": [0]}],
+        ]
+
+        first = self.qiskit_runner.run_circuit(
+            steps,
+            qubit_count=1,
+            until_step_index=0,
+            simulation_seed=12345,
+        )
+        second = self.qiskit_runner.run_circuit(
+            steps,
+            qubit_count=1,
+            until_step_index=1,
+            simulation_seed=12345,
+        )
+
+        assert first[1]["measuredBits"] == second[1]["measuredBits"]
+
     def test_build_circuit_with_unknown_operation(self):
         steps = [
             [{"type": "UnknownGate", "targets": [0]}],

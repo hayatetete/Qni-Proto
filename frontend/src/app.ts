@@ -78,6 +78,8 @@ export class App {
   private jupyterViewMode: JupyterViewMode = "notebook";
   private jupyterReadOnly = false;
   private simulationRequestId = 0;
+  private simulationSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+  private readonly viewerMeasurementResults = new Map<string, 0 | 1>();
   private jupyterZoom = 1;
   private jupyterRenderedZoom = 1;
   private readonly jupyterZoomMin = 0.5;
@@ -133,6 +135,10 @@ export class App {
 
   get stateVector(): StateVectorComponent {
     return this.stateVectorFrame!.stateVector;
+  }
+
+  setSimulationSeed(seed: number): void {
+    this.simulationSeed = seed >>> 0;
   }
 
   constructor(elementId: string) {
@@ -874,6 +880,7 @@ export class App {
       return;
     }
     if (event.data.type === "finish") {
+      this.applyViewerMeasurementResults();
       this.element.dataset.state = "idle";
       this.scheduleJupyterViewerResize();
       return;
@@ -903,6 +910,9 @@ export class App {
             throw new Error(`${measurementGate} is not MeasurementGate`);
           }
           measurementGate.value = value;
+          if (value !== "") {
+            this.viewerMeasurementResults.set(`${stepIndex}:${bit}`, value);
+          }
         }
       }
     }
@@ -1412,6 +1422,18 @@ export class App {
     this.postMessageToWorker();
   }
 
+  private applyViewerMeasurementResults(): void {
+    for (const [key, value] of this.viewerMeasurementResults) {
+      const [stepIndex, bit] = key.split(":").map(Number);
+      const operation = this.circuit
+        .fetchStep(stepIndex)
+        .fetchDropzone(bit).operation;
+      if (operation instanceof MeasurementGate) {
+        operation.value = value;
+      }
+    }
+  }
+
   private setAppStateToRunning() {
     // ページの <div id="app"></div> を
     // <div id="app" data-state="running"></div> に変更
@@ -1425,6 +1447,7 @@ export class App {
     document.getElementById("simulation-error")?.setAttribute("hidden", "");
     this.worker.postMessage({
       requestId: this.simulationRequestId,
+      simulationSeed: this.simulationSeed,
       circuitJson: this.circuit.toJSON(),
       qubitCount: this.stateVector.qubitCount,
       untilStepIndex: this.circuit.activeStepIndex,

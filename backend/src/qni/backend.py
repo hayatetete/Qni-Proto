@@ -244,19 +244,27 @@ def _convert_and_filter_qiskit_step_results(
     circuit_request_data: CircuitRequestData,
 ) -> list[StepResult]:
     return [
-        _convert_qiskit_step_result(each, circuit_request_data)
-        for each in qiskit_step_results
+        _convert_qiskit_step_result(
+            each,
+            circuit_request_data,
+            include_amplitudes=index == circuit_request_data.until_step_index,
+        )
+        for index, each in enumerate(qiskit_step_results)
     ]
 
 
 def _convert_qiskit_step_result(
     qiskit_step_result: QiskitStepResult,
     circuit_request_data: CircuitRequestData,
+    *,
+    include_amplitudes: bool = True,
 ) -> StepResult:
     measured_bits = qiskit_step_result["measuredBits"]
     bloch_vectors = qiskit_step_result.get("blochVectors", {})
 
-    amplitudes_qiskit = qiskit_step_result.get("amplitudes", None)
+    amplitudes_qiskit = (
+        qiskit_step_result.get("amplitudes", None) if include_amplitudes else None
+    )
     if amplitudes_qiskit is None:
         return {"measuredBits": measured_bits, "blochVectors": bloch_vectors}
 
