@@ -31,6 +31,115 @@ const viewerState = {
 };
 
 test.describe("QniNotebook intermediate-state inspection", () => {
+  test("hides step boundaries in the circuit-only view", async ({ page }) => {
+    const circuitOnlyState = { ...viewerState, view: "circuit" };
+
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(circuitOnlyState))}`,
+    );
+    await page.waitForFunction(() => window.pixiApp !== undefined);
+
+    const markerVisibility = await page.evaluate(
+      () => window.pixiApp?.circuit.stepMarkersVisible,
+    );
+    expect(markerVisibility).toBe(false);
+  });
+
+  test("shows final measurement bits in the circuit-only view", async ({
+    page,
+  }) => {
+    const circuitOnlyState = {
+      ...viewerState,
+      steps: [
+        [{ type: "H", targets: [0] }],
+        [{ type: "Measure", targets: [0, 1, 2] }],
+      ],
+      view: "circuit",
+      active_step_index: 1,
+    };
+    await page.route("http://localhost:8000/backend.json", async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: [
+          zeroResult(0),
+          { ...zeroResult(5), measuredBits: { 0: 1, 1: 0, 2: 1 } },
+        ],
+      });
+    });
+
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(circuitOnlyState))}`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+
+    const measuredValues = await page.evaluate(() =>
+      [0, 1, 2].map(
+        (qubit) =>
+          window.pixiApp?.circuit.fetchStep(1).fetchDropzone(qubit).operation
+            ?.value,
+      ),
+    );
+    expect(measuredValues).toEqual([1, 0, 1]);
+  });
+
+  test("keeps the cell measurement while selecting step boundaries", async ({
+    page,
+  }) => {
+    const simulationSeeds: string[] = [];
+    const stateWithMeasurement = {
+      ...viewerState,
+      steps: [
+        [{ type: "H", targets: [0] }],
+        [{ type: "Measure", targets: [0, 1, 2] }],
+      ],
+      active_step_index: 0,
+    };
+    await page.route("http://localhost:8000/backend.json", async (route) => {
+      const body = new URLSearchParams(route.request().postData() ?? "");
+      simulationSeeds.push(body.get("simulationSeed") ?? "");
+      await route.fulfill({
+        status: 200,
+        json: [
+          zeroResult(0),
+          { ...zeroResult(5), measuredBits: { 0: 1, 1: 0, 2: 1 } },
+        ],
+      });
+    });
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(stateWithMeasurement))}`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+
+    const measurementValues = () =>
+      page.evaluate(() =>
+        [0, 1, 2].map(
+          (qubit) =>
+            window.pixiApp?.circuit.fetchStep(1).fetchDropzone(qubit).operation
+              ?.value,
+        ),
+      );
+    expect(await measurementValues()).toEqual([1, 0, 1]);
+
+    await page.evaluate(() => window.pixiApp?.circuit.fetchStep(1).activate());
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+    expect(await measurementValues()).toEqual([1, 0, 1]);
+
+    await page.evaluate(() => window.pixiApp?.circuit.fetchStep(0).activate());
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+    expect(await measurementValues()).toEqual([1, 0, 1]);
+    expect(simulationSeeds.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(simulationSeeds).size).toBe(1);
+    expect(simulationSeeds[0]).not.toBe("");
+  });
+
   test("hides editing controls before the notebook app initializes", async ({
     page,
   }) => {
