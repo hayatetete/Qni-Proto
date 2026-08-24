@@ -31,6 +31,19 @@ const viewerState = {
 };
 
 test.describe("QniNotebook intermediate-state inspection", () => {
+  test("hides editing controls before the notebook app initializes", async ({
+    page,
+  }) => {
+    await page.route("**/jupyter-main.ts", (route) => route.abort());
+
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
+    );
+
+    await expect(page.locator("#menu-container")).toBeHidden();
+    await expect(page.locator("#demo-header")).toBeVisible();
+  });
+
   test("shows the read-only purpose and updates to the selected step", async ({
     page,
   }) => {
@@ -52,6 +65,15 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     );
     await expect(page.locator("#menu-container")).toBeHidden();
 
+    const chromeLayout = await page.evaluate(() => ({
+      headerBottom:
+        document.getElementById("demo-header")?.getBoundingClientRect().bottom,
+      circuitTop: window.pixiApp?.circuitFrame.y,
+    }));
+    expect(chromeLayout.circuitTop).toBeGreaterThanOrEqual(
+      chromeLayout.headerBottom ?? 0,
+    );
+
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
     await page.evaluate(() => window.pixiApp?.circuit.fetchStep(3).activate());
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
@@ -61,6 +83,9 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       basis2: window.pixiApp?.stateVector.qubitCircleAt(2)?.probability,
     }));
     expect(probabilities).toEqual({ basis0: 0, basis2: 100 });
+    await expect(page).toHaveScreenshot("qni-notebook-read-only-layout.png", {
+      animations: "disabled",
+    });
   });
 
   test("does not let an older step response overwrite the current state", async ({
@@ -105,6 +130,9 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await expect(page.locator("#simulation-error")).toContainText(
       "Unsupported demo circuit",
     );
+    await expect(page).toHaveScreenshot("qni-notebook-backend-error.png", {
+      animations: "disabled",
+    });
   });
 
   test("renders known complex amplitudes as probability and phase", async ({
