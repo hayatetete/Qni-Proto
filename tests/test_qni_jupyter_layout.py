@@ -80,10 +80,54 @@ def test_changed_circuit_does_not_reuse_stale_visual_columns() -> None:
     restored_steps, _, _ = qni.quri_circuit_to_steps(circuit)
 
     assert restored_steps == [
-        [{"type": "H", "targets": [0]}],
-        [{"type": "H", "targets": [1]}],
-        [{"type": "H", "targets": [2]}],
+        [
+            {"type": "H", "targets": [0]},
+            {"type": "H", "targets": [1]},
+            {"type": "H", "targets": [2]},
+        ],
         [{"type": "X", "targets": [0]}],
+    ]
+
+
+def test_adjacent_gates_on_disjoint_qubits_share_a_visual_step() -> None:
+    circuit = FakeCircuit(
+        3,
+        [
+            FakeGate("H", (0,)),
+            FakeGate("H", (1,)),
+            FakeGate("H", (2,)),
+            FakeGate("X", (0,)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [
+            {"type": "H", "targets": [0]},
+            {"type": "H", "targets": [1]},
+            {"type": "H", "targets": [2]},
+        ],
+        [{"type": "X", "targets": [0]}],
+    ]
+
+
+def test_gate_sharing_a_control_or_target_starts_a_new_visual_step() -> None:
+    circuit = FakeCircuit(
+        3,
+        [
+            FakeGate("H", (0,)),
+            FakeGate("CNOT", (1,), (0,)),
+            FakeGate("X", (2,)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [{"type": "H", "targets": [0]}],
+        [{"type": "X", "targets": [1], "controls": [0]}],
+        [{"type": "X", "targets": [2]}],
     ]
 
 

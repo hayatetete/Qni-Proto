@@ -1043,7 +1043,7 @@ def quri_circuit_to_steps(
             unsupported.append(f'{gate_name} at gate index {index}')
             continue
         if operation:
-            steps.append([operation])
+            _append_operation_to_parallel_step(steps, operation)
 
     if unsupported:
         raise ValueError(
@@ -1051,6 +1051,36 @@ def quri_circuit_to_steps(
             "showing a different circuit: " + ", ".join(unsupported)
         )
     return steps, int(circuit.qubit_count), ()
+
+
+def _append_operation_to_parallel_step(
+    steps: list[list[dict[str, Any]]], operation: dict[str, Any]
+) -> None:
+    """Place adjacent, equivalent operations on disjoint qubits in one step."""
+    occupied_qubits = {
+        int(index)
+        for key in ("targets", "controls")
+        for index in operation.get(key, ())
+    }
+    if steps:
+        current_operation = steps[-1][-1]
+        current_step_qubits = {
+            int(index)
+            for step_operation in steps[-1]
+            for key in ("targets", "controls")
+            for index in step_operation.get(key, ())
+        }
+        same_gate_shape = (
+            operation.get("type") == current_operation.get("type")
+            and len(operation.get("targets", ()))
+            == len(current_operation.get("targets", ()))
+            and len(operation.get("controls", ()))
+            == len(current_operation.get("controls", ()))
+        )
+        if same_gate_shape and occupied_qubits.isdisjoint(current_step_qubits):
+            steps[-1].append(operation)
+            return
+    steps.append([operation])
 
 
 def _remember_circuit_step_layout(
