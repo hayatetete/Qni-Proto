@@ -181,6 +181,21 @@ def test_explicit_display_names_select_the_expected_panels() -> None:
         qni.show_circuit(circuit, height=300)
         assert open_view.call_args.kwargs["view"] == "circuit"
         assert open_view.call_args.kwargs["active_step"] == "last"
+
+
+def test_inspection_height_includes_both_panes_and_notebook_chrome() -> None:
+    steps = [[{"type": "H", "targets": [0]}]]
+
+    height = qni._preferred_inspect_height(steps, qubit_count=5)
+
+    assert height >= qni.NOTEBOOK_TOOLBAR_HEIGHT + qni._preferred_circuit_height(
+        steps, 5
+    )
+    assert height >= (
+        qni.NOTEBOOK_TOOLBAR_HEIGHT
+        + qni.NOTEBOOK_STATE_HEADER_HEIGHT
+        + qni._preferred_state_height(5)
+    )
 class _UnsupportedGate:
     name = "UnsupportedGate"
     target_indices = (0,)
@@ -199,14 +214,21 @@ def test_unsupported_quri_gate_stops_visualization() -> None:
         qni.quri_circuit_to_steps(_CircuitWithUnsupportedGate())
 
 
-@pytest.mark.parametrize("gate_name", ["RX", "RY", "RZ", "U1"])
-def test_rotation_gate_stops_visualization_until_angles_are_preserved(
+@pytest.mark.parametrize(
+    ("gate_name", "operation_type"),
+    [("RX", "Rx"), ("RY", "Ry"), ("RZ", "Rz"), ("U1", "P")],
+)
+def test_numeric_rotation_gate_preserves_its_angle(
     gate_name: str,
+    operation_type: str,
 ) -> None:
     circuit = FakeCircuit(1, [FakeGate(gate_name, (0,), params=(0.25,))])
 
-    with pytest.raises(ValueError, match=f"{gate_name} with a rotation angle"):
-        qni.quri_circuit_to_steps(circuit)
+    steps, qubit_count, warnings = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [[{"type": operation_type, "targets": [0], "angle": "0.25"}]]
+    assert qubit_count == 1
+    assert warnings == ()
 
 
 def test_non_identity_measurement_mapping_stops_visualization() -> None:

@@ -15,7 +15,7 @@ type JupyterInitialState = {
 };
 
 type CircuitJson = {
-  cols: (string | null)[][];
+  cols: unknown[][];
   qubitCount: number;
   title?: string;
   activeStepIndex?: number;
@@ -269,7 +269,7 @@ function requiredQubitCount(
 function stepToColumn(
   step: SerializedOperation[],
   qubitCount: number,
-): (string | null)[] {
+): unknown[] {
   const column = emptyColumn(qubitCount);
 
   for (const operation of step) {
@@ -280,7 +280,10 @@ function stepToColumn(
       column[antiControl] = "◦";
     }
     for (const target of operation.targets) {
-      column[target] = labelForOperation(operation);
+      const label = labelForOperation(operation);
+      column[target] = operation.angle
+        ? [label, { angle: operation.angle }]
+        : label;
     }
   }
 
@@ -299,6 +302,6 @@ function labelForOperation(operation: SerializedOperation): string {
   return operation.type;
 }
 
-function emptyColumn(qubitCount: number): null[] {
+function emptyColumn(qubitCount: number): unknown[] {
   return Array.from({ length: qubitCount }, () => null);
 }

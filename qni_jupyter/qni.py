@@ -29,6 +29,8 @@ DEFAULT_VIEWER_WIDTH = "100%"
 DEFAULT_BACKEND_PORT = 8000
 DEFAULT_FRONTEND_PORT = 5173
 MAX_DEMO_QUBITS = 8
+NOTEBOOK_TOOLBAR_HEIGHT = 45
+NOTEBOOK_STATE_HEADER_HEIGHT = 44
 QniView = Literal["notebook", "state", "circuit"]
 QniInteractionMode = Literal["edit", "inspect"]
 QniStep = int | Literal["last"]
@@ -784,10 +786,12 @@ def _preferred_inspect_height(
     steps: list[list[dict[str, Any]]],
     qubit_count: int | None,
 ) -> int:
-    """Fit circuit and state content without leaving excessive blank space."""
+    """Fit both panes vertically, including the notebook-only chrome."""
     natural_height = max(
-        _preferred_circuit_height(steps, qubit_count),
-        _preferred_state_height(qubit_count),
+        NOTEBOOK_TOOLBAR_HEIGHT + _preferred_circuit_height(steps, qubit_count),
+        NOTEBOOK_TOOLBAR_HEIGHT
+        + NOTEBOOK_STATE_HEADER_HEIGHT
+        + _preferred_state_height(qubit_count),
     )
     return max(240, min(720, natural_height))
 
@@ -1029,11 +1033,6 @@ def quri_circuit_to_steps(
     unsupported: list[str] = []
     for index, gate in enumerate(circuit.gates):
         gate_name = getattr(gate, "name", type(gate).__name__)
-        if gate_name in {"RX", "RY", "RZ", "U1"}:
-            unsupported.append(
-                f"{gate_name} with a rotation angle at gate index {index}"
-            )
-            continue
         control_values = tuple(getattr(gate, "control_values", ()))
         if control_values and any(int(value) != 1 for value in control_values):
             unsupported.append(f"{gate_name} with anti-control at gate index {index}")

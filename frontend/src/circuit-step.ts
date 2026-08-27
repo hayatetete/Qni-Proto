@@ -365,6 +365,22 @@ export class CircuitStep extends Container {
       ops.push(null);
     }
 
+    // Notebook URLから渡された数値回転角を、復元したゲートへ保持する。
+    stepJson.forEach((state, index) => {
+      if (!Array.isArray(state) || typeof state[1] !== "object" || !state[1]) {
+        return;
+      }
+      const angle = (state[1] as { angle?: unknown }).angle;
+      const operation = ops[index];
+      if (
+        typeof angle === "string" &&
+        operation &&
+        "rotationAngle" in operation
+      ) {
+        operation.rotationAngle = angle;
+      }
+    });
+
     // 旧 Qni の "QFT3" / "QFT†3" を、現行の隣接 QFT 配置へ展開する。
     labels.forEach((label, index) => {
       const span = CircuitStep.qftSpanFromLabel(label);

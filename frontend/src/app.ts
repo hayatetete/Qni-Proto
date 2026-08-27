@@ -45,6 +45,7 @@ export class App {
   private static readonly JUPYTER_TOOLBAR_HEIGHT = 45;
   private static readonly JUPYTER_CODE_PANEL_HEADER_HEIGHT = 52;
   private static readonly JUPYTER_STATE_PANEL_HEADER_HEIGHT = 88;
+  private static readonly JUPYTER_READ_ONLY_STATE_PANEL_HEADER_HEIGHT = 44;
   private static readonly JUPYTER_VIEWPORT_DEFAULT_HEIGHT = 480;
   private static readonly JUPYTER_VIEWPORT_MIN_HEIGHT = 260;
   private static readonly JUPYTER_VIEWPORT_MAX_HEIGHT = 720;
@@ -568,8 +569,12 @@ export class App {
       return 0;
     }
 
-    return this.jupyterRightPane === "code"
-      ? App.JUPYTER_CODE_PANEL_HEADER_HEIGHT
+    if (this.jupyterRightPane === "code") {
+      return App.JUPYTER_CODE_PANEL_HEADER_HEIGHT;
+    }
+
+    return this.jupyterReadOnly
+      ? App.JUPYTER_READ_ONLY_STATE_PANEL_HEADER_HEIGHT
       : App.JUPYTER_STATE_PANEL_HEADER_HEIGHT;
   }
 
@@ -587,7 +592,11 @@ export class App {
     this.circuit.setStepMarkersVisible(this.jupyterViewMode === "notebook");
     this.stateVectorFrame.setContentPinnedToTopLeft(!this.jupyterReadOnly);
     this.stateVectorFrame.setPresentationInset(
-      this.jupyterViewMode === "state" ? 8 : 0,
+      this.jupyterViewMode === "state" ||
+        (this.jupyterViewMode === "notebook" &&
+          this.jupyterRightPane === "state-vector")
+        ? 8
+        : 0,
     );
     if (this.jupyterViewMode === "notebook") {
       this.resetJupyterZoom();
@@ -1725,11 +1734,22 @@ export class App {
     }
 
     const scale = isPresentation ? this.jupyterRenderedZoom : 1;
+    const stateVectorFitScale =
+      this.jupyterViewMode === "notebook" &&
+      this.jupyterRightPane === "state-vector"
+        ? Math.min(
+            1,
+            Math.max(1, this.jupyterSidePanelWidth() - 16) /
+              Math.max(1, this.stateVector.width),
+            Math.max(1, this.jupyterSidePanelContentHeight() - 16) /
+              Math.max(1, this.stateVector.height),
+          )
+        : 1;
     this.circuitFrame.setPresentationScale(
       this.jupyterViewMode === "circuit" ? scale : 1,
     );
     this.stateVectorFrame.setPresentationScale(
-      this.jupyterViewMode === "state" ? scale : 1,
+      this.jupyterViewMode === "state" ? scale : stateVectorFitScale,
     );
   }
 
@@ -1851,9 +1871,13 @@ export class App {
     if (this.jupyterViewportHeightOverride !== null) {
       return this.jupyterViewportHeightOverride;
     }
-    const requestedHeight = Number(
-      new URLSearchParams(window.location.search).get("height"),
+    const heightParameter = new URLSearchParams(window.location.search).get(
+      "height",
     );
+    if (heightParameter === null) {
+      return App.JUPYTER_VIEWPORT_DEFAULT_HEIGHT;
+    }
+    const requestedHeight = Number(heightParameter);
     if (!Number.isFinite(requestedHeight)) {
       return App.JUPYTER_VIEWPORT_DEFAULT_HEIGHT;
     }
