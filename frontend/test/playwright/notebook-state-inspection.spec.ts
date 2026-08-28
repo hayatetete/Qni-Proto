@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 type StepResult = {
   amplitudes: Record<string, [number, number]>;
@@ -29,6 +29,21 @@ const viewerState = {
   editable: false,
   active_step_index: 0,
 };
+
+async function freezeWebGlCanvasForScreenshot(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+
+    const image = document.createElement("img");
+    image.src = canvas.toDataURL("image/png");
+    image.alt = "Qni canvas snapshot";
+    image.style.cssText = canvas.style.cssText;
+    image.width = canvas.width;
+    image.height = canvas.height;
+    canvas.replaceWith(image);
+  });
+}
 
 test.describe("QniNotebook intermediate-state inspection", () => {
   test("hides step boundaries in the circuit-only view", async ({ page }) => {
@@ -75,11 +90,12 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     );
 
     const measuredValues = await page.evaluate(() =>
-      [0, 1, 2].map(
-        (qubit) =>
-          window.pixiApp?.circuit.fetchStep(1).fetchDropzone(qubit).operation
-            ?.value,
-      ),
+      [0, 1, 2].map((qubit) => {
+        const operation = window.pixiApp?.circuit
+          .fetchStep(1)
+          .fetchDropzone(qubit).operation;
+        return operation && "value" in operation ? operation.value : undefined;
+      }),
     );
     expect(measuredValues).toEqual([1, 0, 1]);
   });
@@ -116,11 +132,14 @@ test.describe("QniNotebook intermediate-state inspection", () => {
 
     const measurementValues = () =>
       page.evaluate(() =>
-        [0, 1, 2].map(
-          (qubit) =>
-            window.pixiApp?.circuit.fetchStep(1).fetchDropzone(qubit).operation
-              ?.value,
-        ),
+        [0, 1, 2].map((qubit) => {
+          const operation = window.pixiApp?.circuit
+            .fetchStep(1)
+            .fetchDropzone(qubit).operation;
+          return operation && "value" in operation
+            ? operation.value
+            : undefined;
+        }),
       );
     expect(await measurementValues()).toEqual([1, 0, 1]);
 
@@ -156,6 +175,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
   test("shows the read-only purpose and updates to the selected step", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1000, height: 360 });
     await page.route("http://localhost:8000/backend.json", async (route) => {
       const body = new URLSearchParams(route.request().postData() ?? "");
       const selectedStep = Number(body.get("untilStepIndex"));
@@ -166,24 +186,41 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     });
 
     await page.goto(
-      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}&height=360`,
     );
     await expect(page.locator("#demo-header")).toBeVisible();
     await expect(page.locator("#demo-header")).toContainText(
       "回路のステップ境界を選ぶと、その時点までの状態を確認できます",
     );
     await expect(page.locator("#menu-container")).toBeHidden();
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+    await expect(page.getByLabel("State vector shape 4 by 4")).toBeVisible();
 
     const chromeLayout = await page.evaluate(() => ({
       headerBottom:
         document.getElementById("demo-header")?.getBoundingClientRect().bottom,
       circuitTop: window.pixiApp?.circuitFrame.y,
+      stateControlsBottom: document
+        .querySelector('[data-jupyter-side-panel-header="true"]')
+        ?.getBoundingClientRect().bottom,
+      stateVectorTop: window.pixiApp?.stateVectorFrame.y,
     }));
     expect(chromeLayout.circuitTop).toBeGreaterThanOrEqual(
       chromeLayout.headerBottom ?? 0,
     );
+    expect(
+      Math.abs(
+        (chromeLayout.stateVectorTop ?? 0) -
+          (chromeLayout.stateControlsBottom ?? 0),
+      ),
+    ).toBeLessThanOrEqual(1);
 
-    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+    const visibleStateCount = await page.evaluate(
+      () => window.pixiApp?.stateVector.visibleQubitCircleIndices.length,
+    );
+    expect(visibleStateCount).toBe(16);
     await page.evaluate(() => window.pixiApp?.circuit.fetchStep(3).activate());
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
 
@@ -192,9 +229,11 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       basis2: window.pixiApp?.stateVector.qubitCircleAt(2)?.probability,
     }));
     expect(probabilities).toEqual({ basis0: 0, basis2: 100 });
-    await expect(page).toHaveScreenshot("qni-notebook-read-only-layout.png", {
-      animations: "disabled",
-    });
+    await freezeWebGlCanvasForScreenshot(page);
+    await expect(page.locator("body")).toHaveScreenshot(
+      "qni-notebook-read-only-layout.png",
+      { animations: "disabled" },
+    );
   });
 
   test("does not let an older step response overwrite the current state", async ({
@@ -228,20 +267,43 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     expect(probabilities).toEqual({ basis0: 0, basis2: 100 });
   });
 
-  test("shows backend failures in the notebook", async ({ page }) => {
-    await page.route("http://localhost:8000/backend.json", (route) =>
-      route.fulfill({ status: 400, json: { error: "Unsupported demo circuit" } }),
-    );
-    await page.goto(
-      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
-    );
-
-    await expect(page.locator("#simulation-error")).toContainText(
-      "Unsupported demo circuit",
-    );
-    await expect(page).toHaveScreenshot("qni-notebook-backend-error.png", {
-      animations: "disabled",
+  test("shows backend availability failures in the notebook", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1000, height: 360 });
+    let requestCount = 0;
+    await page.route("http://localhost:8000/backend.json", async (route) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        await route.fulfill({
+          status: 200,
+          json: viewerState.steps.map(() => zeroResult(0)),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 503,
+        json: { error: "State simulation is temporarily unavailable" },
+      });
     });
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}&height=360`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+    await page.evaluate(() => window.pixiApp?.circuit.fetchStep(3).activate());
+
+    const errorBanner = page.locator("#simulation-error");
+    await expect(errorBanner).toContainText(
+      "State simulation is temporarily unavailable",
+    );
+    await page.waitForTimeout(500);
+    await freezeWebGlCanvasForScreenshot(page);
+    await expect(page.locator("body")).toHaveScreenshot(
+      "qni-notebook-backend-unavailable-layout.png",
+      { animations: "disabled" },
+    );
   });
 
   test("renders known complex amplitudes as probability and phase", async ({
@@ -308,7 +370,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
 
     const vector = await page.evaluate(() => {
       const operation = window.pixiApp?.circuit.fetchStep(1).fetchDropzone(0).operation;
-      return operation && "x" in operation
+      return operation && "x" in operation && "y" in operation && "z" in operation
         ? { x: operation.x, y: operation.y, z: operation.z }
         : null;
     });
