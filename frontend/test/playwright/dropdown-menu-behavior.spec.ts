@@ -10,6 +10,9 @@ test("opens and closes the main menu", async ({ page }) => {
   await button.click();
   await expect(dropdown).toBeVisible();
   await expect(button).toHaveAttribute("aria-expanded", "true");
+  await expect(dropdown).toHaveScreenshot("qni-main-menu-open.png", {
+    animations: "disabled",
+  });
 
   await page.locator("body").click({ position: { x: 500, y: 400 } });
   await expect(dropdown).toBeHidden();
