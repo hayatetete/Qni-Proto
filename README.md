@@ -33,7 +33,7 @@ Dockerが利用できる環境で、リポジトリルートから次の一手�
 docker compose -f compose.demo.yml up --build
 ```
 
-起動後、`http://127.0.0.1:8888/lab/tree/qni_tutorial.ipynb`を開きます。
+起動後、`http://127.0.0.1:8888/lab/tree/qni_demo.ipynb`を開きます。
 Node、Yarn、Pythonパッケージはコンテナ内へ固定して導入されます。
 
 5173、8000、8888番ポートが使用中の場合は、ホスト側のポートをまとめて変更できます。
@@ -45,20 +45,20 @@ QNI_DEMO_JUPYTER_PORT=18888 \
 docker compose -f compose.demo.yml up --build
 ```
 
-この場合は`http://127.0.0.1:18888/lab/tree/qni_tutorial.ipynb`を開きます。
+この場合は`http://127.0.0.1:18888/lab/tree/qni_demo.ipynb`を開きます。
 
 ### 初期デモの対応範囲
 
 - 1〜8量子ビット（完全な状態ベクトルを使用）
-- H、X、Y、Z、S、S†、T、T†、√X
+- H、X、Y、Z、S、S†、T、T†、√X、数値で角度が確定したRX、RY、RZ、U1
 - CNOT、CZ、Toffoli、対応する複数制御ゲート、SWAP、Measurement
 - 読み取り専用の `qni.show_circuit_and_state(circuit)`
 - 1リクエストの上限は256 KiB
 - Backendの1回のシミュレーション上限は10秒
 
-RX、RY、RZ、U1を含む回転ゲート、未対応ゲート、アンチコントロール、
-保持できないclassical bit mappingは、別の意味で表示せず例外で停止します。
-GUI編集、`commit()`、パラメータ式、20〜32量子ビットの性能保証は初期デモの対象外です。
+未対応ゲート、未束縛のパラメータ式、アンチコントロール、保持できない
+classical bit mappingは、別の意味で表示せず例外で停止します。
+GUI編集、`commit()`、20〜32量子ビットの性能保証は初期デモの対象外です。
 
 ### 準備
 
@@ -110,16 +110,16 @@ yarn install --immutable
 cd ..
 ```
 
-### チュートリアルを起動する
+### デモNotebookを起動する
 
 JupyterLabを使用する場合:
 
 ```shell
-jupyter lab qni_tutorial.ipynb
+jupyter lab qni_demo.ipynb
 ```
 
 VS Codeを使用する場合は、リポジトリルートをVS Codeで開き、
-[`qni_tutorial.ipynb`](./qni_tutorial.ipynb) のカーネルに
+[`qni_demo.ipynb`](./qni_demo.ipynb) のカーネルに
 `.venv-qni`を選択してください。
 
 Notebookはリポジトリルートから開いてください。初回のQni表示時に、
