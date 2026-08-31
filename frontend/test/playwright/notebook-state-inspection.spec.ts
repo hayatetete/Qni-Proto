@@ -49,15 +49,42 @@ test.describe("QniNotebook intermediate-state inspection", () => {
   test("hides step boundaries in the circuit-only view", async ({ page }) => {
     const circuitOnlyState = { ...viewerState, view: "circuit" };
 
+    await page.route("http://localhost:8000/backend.json", (route) =>
+      route.fulfill({
+        status: 200,
+        json: viewerState.steps.map(() => zeroResult(0)),
+      }),
+    );
+
     await page.goto(
       `/jupyter.html?state=${encodeURIComponent(JSON.stringify(circuitOnlyState))}`,
     );
-    await page.waitForFunction(() => window.pixiApp !== undefined);
-
-    const markerVisibility = await page.evaluate(
-      () => window.pixiApp?.circuit.stepMarkersVisible,
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
     );
-    expect(markerVisibility).toBe(false);
+
+    const mode = await page.evaluate(() => ({
+      readOnly: window.pixiApp?.isJupyterReadOnly,
+      circuitVisible: window.pixiApp?.circuitFrame.visible,
+      stateVectorVisible: window.pixiApp?.stateVectorFrame.visible,
+      paletteVisible: window.pixiApp?.circuitFrame.operationPalette.visible,
+      stepMarkersVisible: window.pixiApp?.circuit.stepMarkersVisible,
+    }));
+    expect(mode).toEqual({
+      readOnly: true,
+      circuitVisible: true,
+      stateVectorVisible: false,
+      paletteVisible: false,
+      stepMarkersVisible: false,
+    });
+    await expect(page.locator("#menu-container")).toBeHidden();
+    // Pixiのゲート文字・輪郭が最初のフレームへ反映されてから固定する。
+    await page.waitForTimeout(500);
+    await freezeWebGlCanvasForScreenshot(page);
+    await expect(page.locator("body")).toHaveScreenshot(
+      "qni-notebook-circuit-only-layout.png",
+      { animations: "disabled" },
+    );
   });
 
   test("shows final measurement bits in the circuit-only view", async ({
