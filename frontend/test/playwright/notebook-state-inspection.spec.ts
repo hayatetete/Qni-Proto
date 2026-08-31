@@ -46,6 +46,57 @@ async function freezeWebGlCanvasForScreenshot(page: Page): Promise<void> {
 }
 
 test.describe("QniNotebook intermediate-state inspection", () => {
+  test("slides from the left edge to the requested final step", async ({ page }) => {
+    const steps = Array.from({ length: 30 }, () => [
+      { type: "X", targets: [0] },
+    ]);
+    const circuitOnlyState = {
+      steps,
+      qubit_count: 1,
+      view: "circuit",
+      editable: false,
+      active_step_index: steps.length - 1,
+      focus_active_step: true,
+    };
+
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({
+        status: 200,
+        json: steps.map(() => zeroResult(0)),
+      }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(circuitOnlyState))}`,
+    );
+    await page.waitForFunction(() => window.pixiApp !== undefined);
+    const initialPosition = await page.evaluate(() => {
+      const app = window.pixiApp!;
+      const first = app.circuit.fetchStep(0);
+      const last = app.circuit.fetchStep(app.circuit.steps.length - 1);
+      return {
+        firstX: first.getGlobalPosition().x,
+        lastX: last.getGlobalPosition().x,
+        width: window.innerWidth,
+      };
+    });
+    expect(initialPosition.firstX).toBeGreaterThanOrEqual(0);
+    expect(initialPosition.lastX).toBeGreaterThan(initialPosition.width);
+
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const app = window.pixiApp!;
+          return app.circuit
+            .fetchStep(app.circuit.steps.length - 1)
+            .getGlobalPosition().x;
+        }),
+      )
+      .toBeLessThan(initialPosition.width);
+  });
+
   test("hides step boundaries in the circuit-only view", async ({ page }) => {
     const circuitOnlyState = { ...viewerState, view: "circuit" };
 

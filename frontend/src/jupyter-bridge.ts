@@ -8,6 +8,7 @@ type JupyterInitialState = {
   title?: string;
   view?: JupyterViewMode;
   active_step_index?: number;
+  focus_active_step?: boolean;
   editable?: boolean;
   draft_id?: string;
   backendUrl?: string;
@@ -19,6 +20,7 @@ type CircuitJson = {
   qubitCount: number;
   title?: string;
   activeStepIndex?: number;
+  focusActiveStep?: boolean;
   editable?: boolean;
 };
 
@@ -193,6 +195,12 @@ function parseInitialStateFromUrl(): JupyterInitialState | null {
     throw new Error("Jupyter initial state active_step_index is invalid.");
   }
   if (
+    parsed.focus_active_step !== undefined &&
+    typeof parsed.focus_active_step !== "boolean"
+  ) {
+    throw new Error("Jupyter initial state focus_active_step is invalid.");
+  }
+  if (
     parsed.simulation_seed !== undefined &&
     (!Number.isInteger(parsed.simulation_seed) ||
       parsed.simulation_seed < 0 ||
@@ -237,6 +245,9 @@ export function toCircuitJson(state: JupyterInitialState): CircuitJson {
     ...(state.title ? { title: state.title } : {}),
     ...(state.active_step_index !== undefined
       ? { activeStepIndex: state.active_step_index }
+      : {}),
+    ...(state.focus_active_step !== undefined
+      ? { focusActiveStep: state.focus_active_step }
       : {}),
     ...(state.editable !== undefined ? { editable: state.editable } : {}),
   };

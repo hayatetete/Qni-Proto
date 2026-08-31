@@ -517,6 +517,7 @@ def open(
     port: int | None = None,
     view: QniView = "notebook",
     active_step: QniStep | None = None,
+    focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
     display: Literal[True] = True,
 ) -> QniEditor | None: ...
@@ -534,6 +535,7 @@ def open(
     port: int | None = None,
     view: QniView = "notebook",
     active_step: QniStep | None = None,
+    focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
     display: Literal[False] = False,
 ) -> QniViewer: ...
@@ -550,6 +552,7 @@ def open(
     port: int | None = None,
     view: QniView = "notebook",
     active_step: QniStep | None = None,
+    focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
     display: bool = True,
 ) -> QniViewer | None:
@@ -608,6 +611,7 @@ def open(
             if active_step_index is not None
             else {}
         ),
+        **({"focus_active_step": True} if focus_active_step else {}),
         **({"qubit_count": qubit_count} if qubit_count is not None else {}),
         "backendUrl": f"{backend_base_url}/backend.json",
         **({"draft_id": draft_id} if draft_id is not None else {}),
@@ -802,16 +806,22 @@ def show_circuit(
     height: int = DEFAULT_VIEWER_HEIGHT,
     width: str | int = DEFAULT_VIEWER_WIDTH,
     port: int | None = None,
+    scroll_to: QniStep | None = None,
     display: bool = True,
 ) -> QniViewer | None:
-    """Show the circuit and any final measurement, without the state panel."""
+    """Show the circuit and any final measurement, without the state panel.
+
+    Set ``scroll_to`` to a step index or ``"last"`` to bring that step into
+    view when the circuit first opens.
+    """
     return open(
         circuit=circuit,
         height=height,
         width=width,
         port=port,
         view="circuit",
-        active_step="last",
+        active_step=scroll_to if scroll_to is not None else "last",
+        focus_active_step=scroll_to is not None,
         mode="inspect",
         display=display,
     )

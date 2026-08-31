@@ -182,6 +182,10 @@ def test_explicit_display_names_select_the_expected_panels() -> None:
         assert open_view.call_args.kwargs["view"] == "circuit"
         assert open_view.call_args.kwargs["active_step"] == "last"
 
+        qni.show_circuit(circuit, height=300, scroll_to="last")
+        assert open_view.call_args.kwargs["active_step"] == "last"
+        assert open_view.call_args.kwargs["focus_active_step"] is True
+
 
 def test_inspection_height_includes_both_panes_and_notebook_chrome() -> None:
     steps = [[{"type": "H", "targets": [0]}]]

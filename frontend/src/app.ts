@@ -220,6 +220,7 @@ export class App {
     qubitCount?: number;
     title?: string;
     activeStepIndex?: number;
+    focusActiveStep?: boolean;
     editable?: boolean;
   }): void {
     this.jupyterReadOnly = circuitJson.editable === false;
@@ -253,6 +254,9 @@ export class App {
       this.circuit.setPresentationMode(false);
     }
     this.applyJupyterFrameLayout();
+    if (circuitJson.focusActiveStep) {
+      this.circuitFrame.animateStepIntoView(activeStepIndex);
+    }
     this.runSimulator();
     this.scheduleJupyterViewerResize();
   }

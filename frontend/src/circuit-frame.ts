@@ -40,6 +40,7 @@ export class CircuitFrame extends Container {
   private pendingWheelDeltaY = 0;
   private pendingWheelPoint: Point | null = null;
   private pendingWheelFrame: number | null = null;
+  private stepScrollAnimationFrame: number | null = null;
   private isPanning = false;
   private lastPanPoint: Point | null = null;
 
@@ -134,6 +135,40 @@ export class CircuitFrame extends Container {
     this.applyScrollContainerScale();
     this.updateMask(this.viewportWidth, this.viewportHeight);
     this.limitScrollPosition();
+  }
+
+  /** Start at the circuit's left edge, then slide the requested step into view. */
+  animateStepIntoView(stepIndex: number): void {
+    if (this.stepScrollAnimationFrame !== null) {
+      cancelAnimationFrame(this.stepScrollAnimationFrame);
+    }
+
+    const step = this.circuit.fetchStep(stepIndex);
+    const scale = this.scrollContainer.scale.x;
+    const padding = 24;
+    const right = (this.circuit.x + step.x + step.width) * scale;
+    const targetX = Math.min(0, this.viewportWidth - padding - right);
+
+    this.scrollContainer.x = 0;
+    this.limitScrollPosition();
+    const startX = this.scrollContainer.x;
+    const distance = targetX - startX;
+    if (distance === 0) return;
+
+    const duration = 900;
+    const startedAt = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      this.scrollContainer.x = startX + distance * eased;
+      this.limitScrollPosition();
+      if (progress < 1) {
+        this.stepScrollAnimationFrame = requestAnimationFrame(tick);
+      } else {
+        this.stepScrollAnimationFrame = null;
+      }
+    };
+    this.stepScrollAnimationFrame = requestAnimationFrame(tick);
   }
 
   private initOperationPalette(): void {
