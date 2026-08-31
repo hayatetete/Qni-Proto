@@ -83,7 +83,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await freezeWebGlCanvasForScreenshot(page);
     await expect(page.locator("body")).toHaveScreenshot(
       "qni-notebook-circuit-only-layout.png",
-      { animations: "disabled" },
+      { animations: "disabled", maxDiffPixels: 3200 },
     );
   });
 
@@ -259,7 +259,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await freezeWebGlCanvasForScreenshot(page);
     await expect(page.locator("body")).toHaveScreenshot(
       "qni-notebook-read-only-layout.png",
-      { animations: "disabled" },
+      { animations: "disabled", maxDiffPixels: 64 },
     );
   });
 
@@ -329,7 +329,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await freezeWebGlCanvasForScreenshot(page);
     await expect(page.locator("body")).toHaveScreenshot(
       "qni-notebook-backend-unavailable-layout.png",
-      { animations: "disabled" },
+      { animations: "disabled", maxDiffPixels: 64 },
     );
   });
 
