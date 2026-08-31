@@ -49,7 +49,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
   test("hides step boundaries in the circuit-only view", async ({ page }) => {
     const circuitOnlyState = { ...viewerState, view: "circuit" };
 
-    await page.route("http://localhost:8000/backend.json", (route) =>
+    await page.route("**/backend.json", (route) =>
       route.fulfill({
         status: 200,
         json: viewerState.steps.map(() => zeroResult(0)),
@@ -99,7 +99,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       view: "circuit",
       active_step_index: 1,
     };
-    await page.route("http://localhost:8000/backend.json", async (route) => {
+    await page.route("**/backend.json", async (route) => {
       await route.fulfill({
         status: 200,
         json: [
@@ -139,7 +139,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       ],
       active_step_index: 0,
     };
-    await page.route("http://localhost:8000/backend.json", async (route) => {
+    await page.route("**/backend.json", async (route) => {
       const body = new URLSearchParams(route.request().postData() ?? "");
       simulationSeeds.push(body.get("simulationSeed") ?? "");
       await route.fulfill({
@@ -203,7 +203,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1000, height: 360 });
-    await page.route("http://localhost:8000/backend.json", async (route) => {
+    await page.route("**/backend.json", async (route) => {
       const body = new URLSearchParams(route.request().postData() ?? "");
       const selectedStep = Number(body.get("untilStepIndex"));
       const results = viewerState.steps.map((_, index) =>
@@ -266,7 +266,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
   test("does not let an older step response overwrite the current state", async ({
     page,
   }) => {
-    await page.route("http://localhost:8000/backend.json", async (route) => {
+    await page.route("**/backend.json", async (route) => {
       const body = new URLSearchParams(route.request().postData() ?? "");
       const selectedStep = Number(body.get("untilStepIndex"));
       if (selectedStep === 0) {
@@ -299,7 +299,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
   }) => {
     await page.setViewportSize({ width: 1000, height: 360 });
     let requestCount = 0;
-    await page.route("http://localhost:8000/backend.json", async (route) => {
+    await page.route("**/backend.json", async (route) => {
       requestCount += 1;
       if (requestCount === 1) {
         await route.fulfill({
@@ -346,7 +346,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       blochVectors: {},
       measuredBits: {},
     };
-    await page.route("http://localhost:8000/backend.json", (route) =>
+    await page.route("**/backend.json", (route) =>
       route.fulfill({
         status: 200,
         json: viewerState.steps.map(() => complexState),
@@ -381,7 +381,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       ],
       active_step_index: 1,
     };
-    await page.route("http://localhost:8000/backend.json", (route) =>
+    await page.route("**/backend.json", (route) =>
       route.fulfill({
         status: 200,
         json: [zeroResult(0), {
