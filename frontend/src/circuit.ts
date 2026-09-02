@@ -4,6 +4,7 @@ import { List } from "@pixi/ui";
 import { QubitCount, WireType } from "./types";
 import { MAX_QUBIT_COUNT, MIN_QUBIT_COUNT } from "./constants";
 import {
+  CIRCUIT_EVENTS,
   CIRCUIT_STEP_EVENTS,
   OPERATION_EVENTS,
 } from "./events";
@@ -139,6 +140,7 @@ export class Circuit extends Container {
     }
 
     this.markerManager.update(this.steps);
+    this.emit(CIRCUIT_EVENTS.STEPS_CHANGED, this.steps.length);
   }
 
   compactForPresentation(): void {
@@ -153,6 +155,7 @@ export class Circuit extends Container {
     }
     this.updateConnections();
     this.markerManager.update(this.steps);
+    this.emit(CIRCUIT_EVENTS.STEPS_CHANGED, this.steps.length);
   }
 
   setPresentationMode(enabled: boolean): void {
@@ -190,6 +193,7 @@ export class Circuit extends Container {
     });
 
     this.markerManager.update(this.steps);
+    this.emit(CIRCUIT_EVENTS.STEPS_CHANGED, this.steps.length);
   }
 
   serialize() {
@@ -291,6 +295,7 @@ export class Circuit extends Container {
     circuitStep.on(OPERATION_EVENTS.GRABBED, this.emitOnGateGrabSignal, this);
 
     this.markerManager.update(this.steps);
+    this.emit(CIRCUIT_EVENTS.STEPS_CHANGED, this.steps.length);
 
     return circuitStep;
   }

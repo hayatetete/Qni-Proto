@@ -1,6 +1,7 @@
 import { App } from "./app";
 import { SerializedOperation } from "./types";
 import { generateQuriCode } from "./quri-code-generator";
+import { mountStepSlider } from "./step-slider";
 
 type JupyterInitialState = {
   steps?: SerializedOperation[][];
@@ -46,6 +47,7 @@ export function loadJupyterInitialState(app: App): void {
     ...toCircuitJson(state),
     editable: state.editable,
   });
+  if ((state.view ?? "notebook") === "notebook") mountStepSlider(app);
   setupEditorDraftSync(app, state);
 }
 

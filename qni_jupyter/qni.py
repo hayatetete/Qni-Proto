@@ -954,8 +954,16 @@ def _preferred_circuit_height(
 ) -> int:
     inferred_qubits = qubit_count or _required_qubit_count_from_steps(steps)
     wire_count = max(1, int(inferred_qubits))
+    # Larger circuits need breathing room around the wires and floating controls.
+    # Reserve two extra wire rows for 5-6 qubits and three for 7+ qubits.
+    if wire_count >= 7:
+        visible_wire_rows = wire_count + 3
+    elif wire_count >= 5:
+        visible_wire_rows = wire_count + 2
+    else:
+        visible_wire_rows = wire_count
     # Qni dropzones are 32px gates with a 1.5x vertical cell and compact padding.
-    return max(120, 16 + wire_count * 48 + 32)
+    return max(120, 16 + visible_wire_rows * 48 + 32)
 
 
 def _preferred_circuit_width(steps: list[list[dict[str, Any]]]) -> int:

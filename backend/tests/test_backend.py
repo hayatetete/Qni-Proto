@@ -104,6 +104,24 @@ def test_post_simple_circuit_no_amplitude_indices():
     )
 
 
+def test_can_return_amplitudes_for_every_step_for_client_cache():
+    response = app.test_client().post(
+        "/backend.json",
+        data={
+            "qubitCount": 1,
+            "untilStepIndex": 0,
+            "amplitudeIndices": "0,1",
+            "includeAllAmplitudes": "true",
+            "steps": '[[{"type": "H", "targets": [0]}], [{"type": "X", "targets": [0]}]]',
+        },
+    )
+
+    results = response.get_json()
+    assert response.status_code == 200
+    assert "amplitudes" in results[0]
+    assert "amplitudes" in results[1]
+
+
 def test_editor_draft_round_trip():
     editor_drafts.clear()
     payload = {

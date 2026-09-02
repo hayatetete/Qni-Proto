@@ -46,6 +46,250 @@ async function freezeWebGlCanvasForScreenshot(page: Page): Promise<void> {
 }
 
 test.describe("QniNotebook intermediate-state inspection", () => {
+  test("selects circuit steps with the slider, keyboard, and number input", async ({ page }) => {
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({
+        status: 200,
+        json: viewerState.steps.map(() => zeroResult(0)),
+      }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+
+    const slider = page.getByRole("slider", { name: "Circuit step" });
+    const number = page.getByRole("spinbutton", { name: "Step number" });
+    await expect(slider).toBeVisible();
+    await slider.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(number).toHaveValue("1");
+    await expect
+      .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
+      .toBe(1);
+
+    await number.fill("3");
+    await page.keyboard.press("Enter");
+    await expect(slider).toHaveValue("3");
+    await expect
+      .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
+      .toBe(3);
+  });
+
+  test("updates slider scale when the circuit step count changes", async ({ page }) => {
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({ status: 200, json: viewerState.steps.map(() => zeroResult(0)) }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
+    );
+    await page.waitForFunction(() => window.pixiApp !== undefined);
+
+    const slider = page.getByRole("slider", { name: "Circuit step" });
+    const initialStepCount = await page.evaluate(
+      () => window.pixiApp?.circuit.steps.length ?? 0,
+    );
+    await expect(slider).toHaveAttribute("max", String(initialStepCount - 1));
+    await page.evaluate(() => {
+      const circuit = window.pixiApp?.circuit;
+      if (circuit) circuit.insertStepAt(circuit.steps.length);
+    });
+    await expect(slider).toHaveAttribute("max", String(initialStepCount));
+    await expect(page.locator("#step-slider-ticks > span")).toHaveCount(
+      initialStepCount + 1,
+    );
+  });
+
+  test("moves and resizes the floating slider while preserving its padding", async ({ page }) => {
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({ status: 200, json: viewerState.steps.map(() => zeroResult(0)) }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
+    );
+    await page.waitForFunction(() => window.pixiApp !== undefined);
+
+    const box = page.locator("#step-slider-container");
+    const track = page.locator("#step-slider-track");
+    const handle = page.getByRole("separator", { name: "Resize step slider" });
+    const before = await box.boundingBox();
+    const beforeTrack = await track.boundingBox();
+    if (!before || !beforeTrack) throw new Error("Slider box is not visible");
+    expect(before.width).toBeCloseTo(400, 0);
+    expect(before.height).toBeCloseTo(64, 0);
+    const beforeTickPositions = await page
+      .locator("#step-slider-ticks > span")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().x));
+    const sliderMetrics = await page.evaluate(() => {
+      const slider = document.getElementById("step-slider");
+      const track = document.getElementById("step-slider-track");
+      const stepNumber = document.getElementById("step-number");
+      const ticks = Array.from(document.querySelectorAll("#step-slider-ticks > span"));
+      if (
+        !(slider instanceof HTMLInputElement) ||
+        !(track instanceof HTMLDivElement) ||
+        !(stepNumber instanceof HTMLInputElement) ||
+        ticks.length < 2
+      )
+        return null;
+      const sliderRect = slider.getBoundingClientRect();
+      const trackRect = track.getBoundingClientRect();
+      const stepNumberRect = stepNumber.getBoundingClientRect();
+      const firstTickRect = ticks[0].getBoundingClientRect();
+      const lastTickRect = ticks[ticks.length - 1].getBoundingClientRect();
+      const style = getComputedStyle(document.getElementById("step-slider-container")!);
+      const thumbWidth = Number.parseFloat(
+        style.getPropertyValue("--step-slider-thumb-width"),
+      );
+      return {
+        thumbWidth,
+        firstTickCenter: firstTickRect.x + firstTickRect.width / 2,
+        lastTickCenter: lastTickRect.x + lastTickRect.width / 2,
+        expectedFirstCenter: sliderRect.x + thumbWidth / 2,
+        expectedLastCenter: sliderRect.right - thumbWidth / 2,
+        widestTick: Math.max(...ticks.map((tick) => tick.getBoundingClientRect().width)),
+        tickHeight: firstTickRect.height,
+        tickColor: getComputedStyle(ticks[0]).backgroundColor,
+        trackLeft: trackRect.left,
+        trackRight: trackRect.right,
+        numberToThumbGap: sliderRect.top - stepNumberRect.bottom,
+      };
+    });
+    if (!sliderMetrics) throw new Error("Slider scale is not visible");
+    expect(sliderMetrics.firstTickCenter).toBeCloseTo(
+      sliderMetrics.expectedFirstCenter,
+      1,
+    );
+    expect(sliderMetrics.lastTickCenter).toBeCloseTo(
+      sliderMetrics.expectedLastCenter,
+      1,
+    );
+    expect(sliderMetrics.thumbWidth).toBeGreaterThan(sliderMetrics.widestTick);
+    expect(sliderMetrics.tickHeight).toBeCloseTo(17, 0);
+    expect(sliderMetrics.tickColor).toBe("rgb(196, 196, 196)");
+    expect(sliderMetrics.trackLeft).toBeCloseTo(sliderMetrics.firstTickCenter, 1);
+    expect(sliderMetrics.trackRight).toBeCloseTo(sliderMetrics.lastTickCenter, 1);
+    expect(sliderMetrics.numberToThumbGap).toBeCloseTo(6, 0);
+    const beforeLeftPadding = beforeTrack.x - before.x;
+    const beforeRightPadding =
+      before.x + before.width - (beforeTrack.x + beforeTrack.width);
+
+    const grabX = before.x + 80;
+    const grabY = before.y + 5;
+    await page.mouse.move(grabX, grabY);
+    await page.mouse.down();
+    await page.mouse.move(grabX + 10, grabY - 10);
+    await expect
+      .poll(async () => (await box.boundingBox())?.x)
+      .toBeCloseTo(before.x + 10, 0);
+    await page.mouse.move(120, 110, { steps: 5 });
+    await page.mouse.up();
+    const moved = await box.boundingBox();
+    if (!moved) throw new Error("Slider box did not move");
+    expect(moved.x).toBeLessThan(before.x);
+    expect(moved.y).toBeLessThan(before.y);
+
+    const resizeHandle = await handle.boundingBox();
+    const resizeMark = await page.locator("#step-slider-resize-mark").boundingBox();
+    if (!resizeHandle || !resizeMark) throw new Error("Resize handle is not visible");
+    expect(resizeMark.y + resizeMark.height / 2).toBeCloseTo(
+      resizeHandle.y + resizeHandle.height / 2,
+      1,
+    );
+    await page.mouse.move(
+      resizeHandle.x + resizeHandle.width / 2,
+      resizeHandle.y + resizeHandle.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(resizeHandle.x + 100, resizeHandle.y + 20, { steps: 5 });
+    await page.mouse.up();
+
+    const resized = await box.boundingBox();
+    const resizedTrack = await track.boundingBox();
+    if (!resized || !resizedTrack) throw new Error("Slider box did not resize");
+    expect(resized.width).toBeGreaterThan(moved.width);
+    expect(resized.height).toBeCloseTo(moved.height, 0);
+    expect(resizedTrack.x - resized.x).toBeCloseTo(beforeLeftPadding, 1);
+    expect(
+      resized.x + resized.width - (resizedTrack.x + resizedTrack.width),
+    ).toBeCloseTo(beforeRightPadding, 1);
+    const resizedTickPositions = await page
+      .locator("#step-slider-ticks > span")
+      .evaluateAll((elements) => elements.map((element) => element.getBoundingClientRect().x));
+    const resizedGaps = resizedTickPositions.slice(1).map(
+      (position, index) => position - resizedTickPositions[index],
+    );
+    expect(resizedGaps[0]).toBeGreaterThan(
+      beforeTickPositions[1] - beforeTickPositions[0],
+    );
+    resizedGaps.forEach((gap) => expect(gap).toBeCloseTo(resizedGaps[0], 1));
+  });
+
+  test("uses responsive representative marks without changing step granularity", async ({
+    page,
+  }) => {
+    const steps = Array.from({ length: 41 }, () => [
+      { type: "X", targets: [0] },
+    ]);
+    const state = { ...viewerState, steps, qubit_count: 1 };
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({ status: 200, json: steps.map(() => zeroResult(0)) }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`,
+    );
+    await page.waitForFunction(() => window.pixiApp !== undefined);
+
+    await expect(page.getByRole("slider", { name: "Circuit step" })).toHaveAttribute(
+      "max",
+      "40",
+    );
+    await expect(page.locator("#step-slider-ticks > span")).toHaveCount(9);
+    await expect(page.locator("#step-slider-labels > span")).toHaveText([
+      "0",
+      "5",
+      "10",
+      "15",
+      "20",
+      "25",
+      "30",
+      "35",
+      "40",
+    ]);
+    await expect
+      .poll(() =>
+        page.locator("#step-slider-labels").evaluate(
+          (element) => getComputedStyle(element).fontSize,
+        ),
+      )
+      .toBe("11px");
+    await expect(page.getByRole("slider", { name: "Circuit step" })).toHaveAttribute(
+      "step",
+      "1",
+    );
+    await page.evaluate(() => {
+      const slider = document.getElementById("step-slider") as HTMLInputElement;
+      for (let index = 0; index <= 40; index += 1) {
+        slider.value = String(index);
+        slider.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
+    await expect(page.getByRole("spinbutton", { name: "Step number" })).toHaveValue(
+      "40",
+    );
+    await expect
+      .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
+      .toBe(40);
+
+    await page.locator("#step-slider-container").evaluate((element) => {
+      (element as HTMLElement).style.width = "800px";
+    });
+    await expect(page.locator("#step-slider-ticks > span")).toHaveCount(41);
+    await expect(page.locator("#step-slider-labels > span")).toHaveCount(0);
+  });
+
   test("slides from the left edge to the requested final step", async ({ page }) => {
     const steps = Array.from({ length: 30 }, () => [
       { type: "X", targets: [0] },
@@ -220,6 +464,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
         }),
       );
     expect(await measurementValues()).toEqual([1, 0, 1]);
+    const requestsAfterInitialLoad = simulationSeeds.length;
 
     await page.evaluate(() => window.pixiApp?.circuit.fetchStep(1).activate());
     await page.waitForFunction(
@@ -232,7 +477,8 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       () => window.pixiApp?.element.dataset.state === "idle",
     );
     expect(await measurementValues()).toEqual([1, 0, 1]);
-    expect(simulationSeeds.length).toBeGreaterThanOrEqual(3);
+    expect(simulationSeeds.length).toBe(requestsAfterInitialLoad);
+    expect(simulationSeeds.length).toBeGreaterThanOrEqual(1);
     expect(new Set(simulationSeeds).size).toBe(1);
     expect(simulationSeeds[0]).not.toBe("");
   });
@@ -256,9 +502,8 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await page.setViewportSize({ width: 1000, height: 360 });
     await page.route("**/backend.json", async (route) => {
       const body = new URLSearchParams(route.request().postData() ?? "");
-      const selectedStep = Number(body.get("untilStepIndex"));
       const results = viewerState.steps.map((_, index) =>
-        zeroResult(index <= selectedStep ? (selectedStep === 3 ? 2 : 0) : 0),
+        zeroResult(index === 3 ? 2 : 0),
       );
       await route.fulfill({ status: 200, json: results });
     });
@@ -318,15 +563,11 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     page,
   }) => {
     await page.route("**/backend.json", async (route) => {
-      const body = new URLSearchParams(route.request().postData() ?? "");
-      const selectedStep = Number(body.get("untilStepIndex"));
-      if (selectedStep === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-      const basisIndex = selectedStep === 3 ? 2 : 0;
       await route.fulfill({
         status: 200,
-        json: viewerState.steps.map(() => zeroResult(basisIndex)),
+        json: viewerState.steps.map((_, index) =>
+          zeroResult(index === 3 ? 2 : 0),
+        ),
       });
     });
 
@@ -355,7 +596,11 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       if (requestCount === 1) {
         await route.fulfill({
           status: 200,
-          json: viewerState.steps.map(() => zeroResult(0)),
+          json: viewerState.steps.map((_, index) =>
+            index === 0
+              ? zeroResult(0)
+              : { measuredBits: {}, blochVectors: {} },
+          ),
         });
         return;
       }

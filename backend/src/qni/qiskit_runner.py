@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from qiskit.result import Result  # type: ignore[import-untyped]
 
 from qiskit import QuantumCircuit, transpile  # type: ignore[import-untyped]
+from qiskit.quantum_info import Statevector  # type: ignore[import-untyped]
 from qiskit_aer import AerSimulator  # type: ignore[import-untyped]
 
 from qni.qiskit_circuit_builder import QiskitCircuitBuilder
@@ -159,8 +160,13 @@ class QiskitRunner:
             return step_results
 
         result = self._run_backend(device=device, simulation_seed=simulation_seed)
+        phase_corrections = self._snapshot_phase_corrections(result)
         statevectors = [
-            self._get_statevector(result, self._statevector_label(step_index))
+            self._get_statevector(
+                result,
+                self._statevector_label(step_index),
+                phase_correction=phase_corrections[step_index],
+            )
             for step_index in range(len(self.steps))
         ]
         measured_bits = self._extract_measurement_results(result)
@@ -266,7 +272,6 @@ class QiskitRunner:
             backend=backend,
             optimization_level=0,
         )
-
         job = backend.run(
             circuit_transpiled,
             shots=1,
@@ -278,22 +283,63 @@ class QiskitRunner:
             ),
         )
         try:
-            return job.result(timeout=MAX_SIMULATION_SECONDS)
+            result = job.result(timeout=MAX_SIMULATION_SECONDS)
         except TimeoutError as exc:
             job.cancel()
             raise SimulationTimeoutError from exc
+
+        return result
+
+    def _snapshot_phase_corrections(self, result: Result) -> list[complex]:
+        """Align snapshots with each logical prefix's global-phase convention."""
+        corrections: list[complex] = []
+        logical = Statevector.from_int(0, 2**self.circuit.num_qubits)
+        for step_index in range(len(self.steps)):
+            step = self.steps[step_index]
+            if any(operation["type"] == "Measure" for operation in step):
+                corrections.extend([1] * (len(self.steps) - step_index))
+                break
+            step_circuit = QuantumCircuit(self.circuit.num_qubits)
+            circuit_builder = QiskitCircuitBuilder()
+            if len(step) == 0:
+                step_circuit.id(list(range(self.circuit.num_qubits)))
+            for operation in step:
+                circuit_builder.apply_operation(step_circuit, operation)
+
+            logical = logical.evolve(step_circuit)
+            logical_amplitudes = np.asarray(logical, dtype=np.complex128)
+            snapshot = np.asarray(
+                result.data().get(self._statevector_label(step_index)),
+                dtype=np.complex128,
+            )
+            reference = next(
+                (
+                    index
+                    for index, amplitude in enumerate(logical_amplitudes)
+                    if abs(amplitude) > 1e-12 and abs(snapshot[index]) > 1e-12
+                ),
+                None,
+            )
+            if reference is None:
+                corrections.append(1)
+                continue
+            phase = logical_amplitudes[reference] / snapshot[reference]
+            corrections.append(phase / abs(phase))
+        return corrections
 
     @staticmethod
     def _get_statevector(
         result: Result,
         label: str,
+        *,
+        phase_correction: complex = 1,
     ) -> dict[int, QiskitAmplitude]:
         amplitudes: npt.NDArray[np.complex128] = np.asarray(
             result.data().get(label),
             dtype=np.complex128,
         )
 
-        return dict(enumerate(amplitudes))
+        return dict(enumerate(amplitudes * phase_correction))
 
     def _extract_measurement_results(self, result: Result) -> list[MeasuredBits]:
         measured_bits: list[MeasuredBits] = [{} for _ in self.steps]

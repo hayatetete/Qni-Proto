@@ -97,6 +97,11 @@ class CircuitRequestData:
         return self._form.get("amplitudeIndices", [], type=self._amplitude_indices_type)
 
     @property
+    def include_all_amplitudes(self) -> bool:
+        """Return whether amplitudes for every step should be included."""
+        return self._form.get("includeAllAmplitudes", "false").lower() == "true"
+
+    @property
     def device(self) -> DeviceType:
         """Retrieves the device type (CPU or GPU) from the form data.
 

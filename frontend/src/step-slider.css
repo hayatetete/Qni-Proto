@@ -1,0 +1,206 @@
+#step-slider-container {
+  --step-progress: 0;
+  --step-slider-thumb-width: 7px;
+  --step-slider-thumb-half-width: 3.5px;
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  z-index: 50;
+  width: min(400px, calc(100vw - 24px));
+  min-width: 260px;
+  max-width: calc(100vw - 16px);
+  height: 64px;
+  border: 0.5px solid #bababa;
+  border-radius: 8px;
+  background: white;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transform: translateX(-50%);
+}
+
+#step-slider-container[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+#step-slider-container[data-representative-scale="true"] {
+  height: 76px;
+}
+
+#step-slider-track {
+  position: absolute;
+  top: 37px;
+  right: calc(17px + var(--step-slider-thumb-half-width));
+  left: calc(18px + var(--step-slider-thumb-half-width));
+  height: 9px;
+  border-radius: 9999px;
+  background: #c4c4c4;
+  pointer-events: none;
+}
+
+#step-slider-ticks {
+  position: absolute;
+  top: 33px;
+  right: calc(17px + var(--step-slider-thumb-half-width));
+  left: calc(18px + var(--step-slider-thumb-half-width));
+  height: 17px;
+  pointer-events: none;
+}
+
+#step-slider-ticks > span {
+  position: absolute;
+  top: 0;
+  height: 17px;
+  border-radius: 9999px;
+  background: #c4c4c4;
+  transform: translateX(-50%);
+}
+
+#step-slider-labels {
+  position: absolute;
+  top: 55px;
+  right: calc(17px + var(--step-slider-thumb-half-width));
+  left: calc(18px + var(--step-slider-thumb-half-width));
+  height: 14px;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 14px;
+  pointer-events: none;
+}
+
+#step-slider-labels > span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+#step-slider-labels > span:first-child {
+  transform: none;
+}
+
+#step-slider-labels > span:last-child {
+  transform: translateX(-100%);
+}
+
+#step-slider {
+  position: absolute;
+  top: 31px;
+  right: 17px;
+  left: 18px;
+  z-index: 10;
+  height: 20px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+#step-slider::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+
+#step-slider::-webkit-slider-thumb {
+  width: var(--step-slider-thumb-width);
+  height: 20px;
+  margin-top: 0;
+  appearance: none;
+  border: 1px solid #0369a1;
+  border-radius: 9999px;
+  background: #0ea5e9;
+}
+
+#step-slider:hover::-webkit-slider-thumb {
+  border-color: #a855f7;
+  background: #0284c7;
+}
+
+#step-slider:active::-webkit-slider-thumb,
+#step-slider:focus-visible::-webkit-slider-thumb {
+  border-color: #7e22ce;
+  background: #0284c7;
+}
+
+#step-slider::-moz-range-track {
+  height: 20px;
+  background: transparent;
+}
+
+#step-slider::-moz-range-thumb {
+  width: var(--step-slider-thumb-width);
+  height: 20px;
+  border: 1px solid #0369a1;
+  border-radius: 9999px;
+  background: #0ea5e9;
+}
+
+#step-slider:hover::-moz-range-thumb {
+  border-color: #a855f7;
+  background: #0284c7;
+}
+
+#step-slider:active::-moz-range-thumb,
+#step-slider:focus-visible::-moz-range-thumb {
+  border-color: #7e22ce;
+  background: #0284c7;
+}
+
+#step-number {
+  position: absolute;
+  top: 5px;
+  left: calc(
+    18px + var(--step-slider-thumb-half-width) +
+      var(--step-progress) * (100% - 35px - var(--step-slider-thumb-width))
+  );
+  z-index: 20;
+  width: 44px;
+  height: 20px;
+  padding: 0 4px;
+  transform: translateX(-50%);
+  appearance: textfield;
+  border: 0;
+  border-radius: 6px;
+  background: black;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  cursor: text;
+  outline: none;
+  user-select: text;
+}
+
+#step-number:focus {
+  box-shadow: 0 0 0 2px #a855f7;
+}
+
+#step-number::-webkit-inner-spin-button,
+#step-number::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+#step-slider-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 30;
+  width: 12px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+#step-slider-resize-mark {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 2px;
+  height: 17px;
+  border-radius: 9999px;
+  background: #c4c4c4;
+  pointer-events: none;
+  transform: translateY(-50%);
+}

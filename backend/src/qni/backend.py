@@ -139,7 +139,7 @@ def handle_circuit_request() -> tuple[Response, int]:
         qiskit_step_results,
         circuit_request_data,
     )
-    app.logger.info("step_results = %s", step_results)
+    app.logger.info("Returning %d cached step results", len(step_results))
     return jsonify(step_results), 200
 
 
@@ -247,7 +247,10 @@ def _convert_and_filter_qiskit_step_results(
         _convert_qiskit_step_result(
             each,
             circuit_request_data,
-            include_amplitudes=index == circuit_request_data.until_step_index,
+            include_amplitudes=(
+                circuit_request_data.include_all_amplitudes
+                or index == circuit_request_data.until_step_index
+            ),
         )
         for index, each in enumerate(qiskit_step_results)
     ]

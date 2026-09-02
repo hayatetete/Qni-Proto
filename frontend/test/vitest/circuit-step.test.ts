@@ -1,4 +1,5 @@
 import { CircuitStep } from "../../src/circuit-step";
+import { AntiControlGate } from "../../src/anti-control-gate";
 import { ControlGate } from "../../src/control-gate";
 import { CIRCUIT_STEP_EVENTS } from "../../src/events";
 import { HGate } from "../../src/h-gate";
@@ -323,6 +324,20 @@ describe("CircuitStep", () => {
         expect(circuitStep.serialize()).toEqual([
           { type: "X", targets: [2], controls: [0] },
         ]);
+      });
+
+      it("should serialize an anti-controlled X gate", () => {
+        const xGate = new XGate();
+        const antiControlGate = new AntiControlGate();
+
+        circuitStep.fetchDropzone(0).addChild(antiControlGate);
+        circuitStep.fetchDropzone(2).addChild(xGate);
+        circuitStep.updateConnections();
+
+        expect(circuitStep.serialize()).toEqual([
+          { type: "X", targets: [2], antiControls: [0] },
+        ]);
+        expect(antiControlGate.children.length).toBeGreaterThanOrEqual(2);
       });
 
       it("should serialize a multi-controlled X gate (Toffoli)", () => {

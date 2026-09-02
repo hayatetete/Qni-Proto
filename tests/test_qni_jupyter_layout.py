@@ -200,6 +200,19 @@ def test_inspection_height_includes_both_panes_and_notebook_chrome() -> None:
         + qni.NOTEBOOK_STATE_HEADER_HEIGHT
         + qni._preferred_state_height(5)
     )
+
+
+@pytest.mark.parametrize(
+    ("qubit_count", "visible_wire_rows"),
+    [(4, 4), (5, 7), (6, 8), (7, 10), (8, 11)],
+)
+def test_circuit_height_reserves_extra_rows_for_larger_circuits(
+    qubit_count: int,
+    visible_wire_rows: int,
+) -> None:
+    height = qni._preferred_circuit_height([], qubit_count)
+
+    assert height == max(120, 16 + visible_wire_rows * 48 + 32)
 class _UnsupportedGate:
     name = "UnsupportedGate"
     target_indices = (0,)
