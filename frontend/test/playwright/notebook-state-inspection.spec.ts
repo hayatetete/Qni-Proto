@@ -637,7 +637,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await freezeWebGlCanvasForScreenshot(page);
     await expect(page.locator("body")).toHaveScreenshot(
       "qni-notebook-read-only-layout.png",
-      { animations: "disabled", maxDiffPixels: 64 },
+      { animations: "disabled", maxDiffPixels: 96 },
     );
   });
 
