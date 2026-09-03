@@ -1,4 +1,8 @@
-# qni-gl
+# QniNotebook
+
+QniNotebook is a read-only intermediate-state visualizer for small QURI Parts
+circuits. It is not presented as a general quantum IDE, a 32-qubit simulator,
+or a full visual circuit debugger.
 
 ## 動作確認のしかた
 
@@ -18,12 +22,47 @@ docker run --gpus all -p 8000:8000 --rm -it qni-gl
 
 ## QniNotebook
 
-QniNotebookを使うと、Jupyter NotebookまたはVS Code Notebook上でQURI Partsの量子回路を表示・編集できます。
+QniNotebookを使うと、Jupyter NotebookまたはVS Code Notebook上で小規模な
+QURI Parts回路と、各ステップ境界までの状態ベクトルを確認できます。
+
+### 固定デモ環境を起動する
+
+Dockerが利用できる環境で、リポジトリルートから次の一手順で起動します。
+
+```shell
+docker compose -f compose.demo.yml up --build
+```
+
+起動後、`http://127.0.0.1:8888/lab/tree/qni_demo.ipynb`を開きます。
+Node、Yarn、Pythonパッケージはコンテナ内へ固定して導入されます。
+
+5173、8000、8888番ポートが使用中の場合は、ホスト側のポートをまとめて変更できます。
+
+```shell
+QNI_DEMO_FRONTEND_PORT=15173 \
+QNI_DEMO_BACKEND_PORT=18000 \
+QNI_DEMO_JUPYTER_PORT=18888 \
+docker compose -f compose.demo.yml up --build
+```
+
+この場合は`http://127.0.0.1:18888/lab/tree/qni_demo.ipynb`を開きます。
+
+### 初期デモの対応範囲
+
+- 1〜8量子ビット（完全な状態ベクトルを使用）
+- H、X、Y、Z、S、S†、T、T†、√X、数値で角度が確定したRX、RY、RZ、U1
+- CNOT、CZ、Toffoli、対応する複数制御ゲート、SWAP、Measurement
+- 読み取り専用の `qni.show_circuit_and_state(circuit)`
+- 1リクエストの上限は256 KiB
+- Backendの1回のシミュレーション上限は10秒
+
+未対応ゲート、未束縛のパラメータ式、アンチコントロール、保持できない
+classical bit mappingは、別の意味で表示せず例外で停止します。
+GUI編集、`commit()`、20〜32量子ビットの性能保証は初期デモの対象外です。
 
 ### 準備
 
-QniNotebookは現在、リポジトリをcloneした開発環境で動作します。
-Pythonパッケージ単体での配布には対応していません。
+以下はコンテナを使わず開発する場合の手順です。
 
 次のソフトウェアを事前に用意してください。
 
@@ -71,16 +110,16 @@ yarn install --immutable
 cd ..
 ```
 
-### チュートリアルを起動する
+### デモNotebookを起動する
 
 JupyterLabを使用する場合:
 
 ```shell
-jupyter lab qni_tutorial.ipynb
+jupyter lab qni_demo.ipynb
 ```
 
 VS Codeを使用する場合は、リポジトリルートをVS Codeで開き、
-[`qni_tutorial.ipynb`](./qni_tutorial.ipynb) のカーネルに
+[`qni_demo.ipynb`](./qni_demo.ipynb) のカーネルに
 `.venv-qni`を選択してください。
 
 Notebookはリポジトリルートから開いてください。初回のQni表示時に、
@@ -105,6 +144,13 @@ qni.show_circuit_and_state(circuit)
 
 回路のステップ境界を選択すると、そのステップまで実行した状態ベクトルを確認できます。
 
+### 2つの確認シナリオ
+
+- 回路構造の確認: `qni.show_circuit(circuit)`で、複数ステップのゲート、制御線、順序と、セル実行時に得た測定結果を確認します。状態ベクトルパネルは表示しません。
+- 誤りの位置特定: `qni.show_circuit_and_state(circuit)`でステップ境界を左から順に選び、既知の期待状態から最初に外れたステップを特定します。こちらが初期デモの主導線です。
+
+初期デモでは両方とも検証済みの1〜8量子ビットに限定します。回路表示だけを行う場合の上限拡大は、このデモの価値を検証した後に別途定義します。
+
 ### 回路だけを表示する
 
 ```python
@@ -112,24 +158,6 @@ qni.show_circuit(circuit)
 ```
 
 `show_circuit()`と`show_circuit_and_state()`は読み取り専用です。
-
-### 回路を編集してPython側へ保存する
-
-```python
-editor = qni.open(circuit=circuit, height=420, mode="edit")
-```
-
-表示されたエディタでゲートを編集した後、次のセルを実行します。
-
-```python
-circuit = editor.commit()
-```
-
-`commit()`は編集後のQURI Parts回路を返します。同じステップに並べた複数のゲートは、保存後に再表示しても同じステップとして表示されます。
-
-```python
-qni.show_circuit_and_state(circuit)
-```
 
 ### 表示を終了する
 
@@ -142,10 +170,9 @@ qni.close()
 ### 補足
 
 - `qni.open()`には`steps=`またはQURI Partsの`QuantumCircuit`を`circuit=`で渡せます。
-- 未対応ゲートはスキップされ、Notebook上に警告が表示されます。
+- 未対応ゲートは回路の意味を変えて表示せず、明示的に拒否されます。
 - Qiskit回路は、QURI Partsの`circuit_from_qiskit()`で変換してから渡してください。
 - Notebookでは`/jupyter.html`をiframeで表示し、既存の`frontend/index.html`は変更しません。
-- GUIの`Export QURI`から、QURI Parts / QURI VM向けPythonコードやNotebookを出力できます。
 
 ## .htpasswd 認証を有効にするには
 

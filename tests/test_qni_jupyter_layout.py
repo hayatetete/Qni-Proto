@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from unittest.mock import patch
 
+import pytest
+
 from qni_jupyter import qni
 
 
@@ -78,10 +80,90 @@ def test_changed_circuit_does_not_reuse_stale_visual_columns() -> None:
     restored_steps, _, _ = qni.quri_circuit_to_steps(circuit)
 
     assert restored_steps == [
-        [{"type": "H", "targets": [0]}],
-        [{"type": "H", "targets": [1]}],
-        [{"type": "H", "targets": [2]}],
+        [
+            {"type": "H", "targets": [0]},
+            {"type": "H", "targets": [1]},
+            {"type": "H", "targets": [2]},
+        ],
         [{"type": "X", "targets": [0]}],
+    ]
+
+
+def test_adjacent_gates_on_disjoint_qubits_share_a_visual_step() -> None:
+    circuit = FakeCircuit(
+        3,
+        [
+            FakeGate("H", (0,)),
+            FakeGate("H", (1,)),
+            FakeGate("H", (2,)),
+            FakeGate("X", (0,)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [
+            {"type": "H", "targets": [0]},
+            {"type": "H", "targets": [1]},
+            {"type": "H", "targets": [2]},
+        ],
+        [{"type": "X", "targets": [0]}],
+    ]
+
+
+def test_swap_connection_lines_that_overlap_use_separate_visual_steps() -> None:
+    circuit = FakeCircuit(
+        4,
+        [
+            FakeGate("SWAP", (1, 2)),
+            FakeGate("SWAP", (0, 3)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [{"type": "Swap", "targets": [1, 2]}],
+        [{"type": "Swap", "targets": [0, 3]}],
+    ]
+
+
+def test_non_overlapping_swap_connection_lines_share_a_visual_step() -> None:
+    circuit = FakeCircuit(
+        4,
+        [
+            FakeGate("SWAP", (0, 1)),
+            FakeGate("SWAP", (2, 3)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [
+            {"type": "Swap", "targets": [0, 1]},
+            {"type": "Swap", "targets": [2, 3]},
+        ]
+    ]
+
+
+def test_gate_sharing_a_control_or_target_starts_a_new_visual_step() -> None:
+    circuit = FakeCircuit(
+        3,
+        [
+            FakeGate("H", (0,)),
+            FakeGate("CNOT", (1,), (0,)),
+            FakeGate("X", (2,)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [{"type": "H", "targets": [0]}],
+        [{"type": "X", "targets": [1], "controls": [0]}],
+        [{"type": "X", "targets": [2]}],
     ]
 
 
@@ -134,3 +216,96 @@ def test_explicit_display_names_select_the_expected_panels() -> None:
 
         qni.show_circuit(circuit, height=300)
         assert open_view.call_args.kwargs["view"] == "circuit"
+        assert open_view.call_args.kwargs["active_step"] == "last"
+
+        qni.show_circuit(circuit, height=300, scroll_to="last")
+        assert open_view.call_args.kwargs["active_step"] == "last"
+        assert open_view.call_args.kwargs["focus_active_step"] is True
+
+
+def test_inspection_height_includes_both_panes_and_notebook_chrome() -> None:
+    steps = [[{"type": "H", "targets": [0]}]]
+
+    height = qni._preferred_inspect_height(steps, qubit_count=5)
+
+    assert height >= qni.NOTEBOOK_TOOLBAR_HEIGHT + qni._preferred_circuit_height(
+        steps, 5
+    )
+    assert height >= (
+        qni.NOTEBOOK_TOOLBAR_HEIGHT
+        + qni.NOTEBOOK_STATE_HEADER_HEIGHT
+        + qni._preferred_state_height(5)
+    )
+
+
+@pytest.mark.parametrize(
+    ("qubit_count", "visible_wire_rows"),
+    [(4, 4), (5, 7), (6, 8), (7, 10), (8, 11)],
+)
+def test_circuit_height_reserves_extra_rows_for_larger_circuits(
+    qubit_count: int,
+    visible_wire_rows: int,
+) -> None:
+    height = qni._preferred_circuit_height([], qubit_count)
+
+    assert height == max(120, 16 + visible_wire_rows * 48 + 32)
+class _UnsupportedGate:
+    name = "UnsupportedGate"
+    target_indices = (0,)
+    control_indices = ()
+    params = ()
+    classical_indices = ()
+
+
+class _CircuitWithUnsupportedGate:
+    qubit_count = 1
+    gates = (_UnsupportedGate(),)
+
+
+def test_unsupported_quri_gate_stops_visualization() -> None:
+    with pytest.raises(ValueError, match="visualization stopped"):
+        qni.quri_circuit_to_steps(_CircuitWithUnsupportedGate())
+
+
+@pytest.mark.parametrize(
+    ("gate_name", "operation_type"),
+    [("RX", "Rx"), ("RY", "Ry"), ("RZ", "Rz"), ("U1", "P")],
+)
+def test_numeric_rotation_gate_preserves_its_angle(
+    gate_name: str,
+    operation_type: str,
+) -> None:
+    circuit = FakeCircuit(1, [FakeGate(gate_name, (0,), params=(0.25,))])
+
+    steps, qubit_count, warnings = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [[{"type": operation_type, "targets": [0], "angle": "0.25"}]]
+    assert qubit_count == 1
+    assert warnings == ()
+
+
+def test_non_identity_measurement_mapping_stops_visualization() -> None:
+    circuit = FakeCircuit(
+        2,
+        [FakeGate("Measurement", (0,), classical_indices=(1,))],
+    )
+
+    with pytest.raises(ValueError, match="Measurement"):
+        qni.quri_circuit_to_steps(circuit)
+
+
+def test_qubit_limit_is_enforced_before_starting_servers() -> None:
+    with pytest.raises(ValueError, match="supports 1-32 qubits"):
+        qni.open(steps=[[]], qubit_count=33, display=False)
+
+
+def test_32_qubit_input_is_accepted_before_simulation() -> None:
+    with (
+        patch.object(qni, "_backend_server") as backend_server,
+        patch.object(qni, "_server") as frontend_server,
+    ):
+        backend_server.return_value.port = 8000
+        frontend_server.return_value.port = 5173
+        viewer = qni.open(steps=[[]], qubit_count=32, display=False)
+
+    assert isinstance(viewer, qni.QniViewer)

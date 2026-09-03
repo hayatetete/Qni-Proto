@@ -17,6 +17,7 @@ export class MeasurementGate extends OutlinedGateMixin(
   static _icon1: Texture;
 
   _value: "" | 0 | 1 = "";
+  private _defaultTexture?: Texture;
 
   get operationType(): string {
     return "MeasurementGate";
@@ -33,10 +34,15 @@ export class MeasurementGate extends OutlinedGateMixin(
   set value(newValue) {
     this._value = newValue;
 
+    if (!this.sprite) {
+      return;
+    }
     if (newValue === 0) {
       this.sprite.texture = MeasurementGate._icon0;
     } else if (newValue === 1) {
       this.sprite.texture = MeasurementGate._icon1;
+    } else if (this._defaultTexture) {
+      this.sprite.texture = this._defaultTexture;
     }
   }
 
@@ -46,9 +52,16 @@ export class MeasurementGate extends OutlinedGateMixin(
 
   async createSprites() {
     const sprites = await super.createSprites(this.operationType);
+    this._defaultTexture = sprites.sprite.texture;
 
     MeasurementGate._icon0 = await Assets.load(icon0Path);
     MeasurementGate._icon1 = await Assets.load(icon1Path);
+
+    if (this._value === 0) {
+      sprites.sprite.texture = MeasurementGate._icon0;
+    } else if (this._value === 1) {
+      sprites.sprite.texture = MeasurementGate._icon1;
+    }
 
     return sprites;
   }

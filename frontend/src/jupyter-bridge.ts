@@ -1,6 +1,7 @@
 import { App } from "./app";
 import { SerializedOperation } from "./types";
 import { generateQuriCode } from "./quri-code-generator";
+import { mountStepSlider } from "./step-slider";
 
 type JupyterInitialState = {
   steps?: SerializedOperation[][];
@@ -8,16 +9,19 @@ type JupyterInitialState = {
   title?: string;
   view?: JupyterViewMode;
   active_step_index?: number;
+  focus_active_step?: boolean;
   editable?: boolean;
   draft_id?: string;
   backendUrl?: string;
+  simulation_seed?: number;
 };
 
 type CircuitJson = {
-  cols: (string | null)[][];
+  cols: unknown[][];
   qubitCount: number;
   title?: string;
   activeStepIndex?: number;
+  focusActiveStep?: boolean;
   editable?: boolean;
 };
 
@@ -36,10 +40,14 @@ export function loadJupyterInitialState(app: App): void {
   }
 
   app.setJupyterViewMode(state.view ?? "notebook");
+  if (state.simulation_seed !== undefined) {
+    app.setSimulationSeed(state.simulation_seed);
+  }
   app.loadCircuitJson({
     ...toCircuitJson(state),
     editable: state.editable,
   });
+  if ((state.view ?? "notebook") === "notebook") mountStepSlider(app);
   setupEditorDraftSync(app, state);
 }
 
@@ -188,6 +196,20 @@ function parseInitialStateFromUrl(): JupyterInitialState | null {
   ) {
     throw new Error("Jupyter initial state active_step_index is invalid.");
   }
+  if (
+    parsed.focus_active_step !== undefined &&
+    typeof parsed.focus_active_step !== "boolean"
+  ) {
+    throw new Error("Jupyter initial state focus_active_step is invalid.");
+  }
+  if (
+    parsed.simulation_seed !== undefined &&
+    (!Number.isInteger(parsed.simulation_seed) ||
+      parsed.simulation_seed < 0 ||
+      parsed.simulation_seed > 0xffffffff)
+  ) {
+    throw new Error("Jupyter initial state simulation_seed is invalid.");
+  }
 
   return parsed;
 }
@@ -226,6 +248,9 @@ export function toCircuitJson(state: JupyterInitialState): CircuitJson {
     ...(state.active_step_index !== undefined
       ? { activeStepIndex: state.active_step_index }
       : {}),
+    ...(state.focus_active_step !== undefined
+      ? { focusActiveStep: state.focus_active_step }
+      : {}),
     ...(state.editable !== undefined ? { editable: state.editable } : {}),
   };
 }
@@ -257,7 +282,7 @@ function requiredQubitCount(
 function stepToColumn(
   step: SerializedOperation[],
   qubitCount: number,
-): (string | null)[] {
+): unknown[] {
   const column = emptyColumn(qubitCount);
 
   for (const operation of step) {
@@ -268,7 +293,10 @@ function stepToColumn(
       column[antiControl] = "◦";
     }
     for (const target of operation.targets) {
-      column[target] = labelForOperation(operation);
+      const label = labelForOperation(operation);
+      column[target] = operation.angle
+        ? [label, { angle: operation.angle }]
+        : label;
     }
   }
 
@@ -287,6 +315,6 @@ function labelForOperation(operation: SerializedOperation): string {
   return operation.type;
 }
 
-function emptyColumn(qubitCount: number): null[] {
+function emptyColumn(qubitCount: number): unknown[] {
   return Array.from({ length: qubitCount }, () => null);
 }

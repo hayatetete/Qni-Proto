@@ -70,6 +70,11 @@ class CircuitRequestData:
         return self._form.get("untilStepIndex", 0, type=int)
 
     @property
+    def simulation_seed(self) -> int | None:
+        """Return the seed shared by all step requests from one viewer."""
+        return self._form.get("simulationSeed", None, type=int)
+
+    @property
     def steps(self) -> list[dict]:
         """Retrieves the list of steps from the form data.
 
@@ -90,6 +95,11 @@ class CircuitRequestData:
         :rtype: list[int]
         """
         return self._form.get("amplitudeIndices", [], type=self._amplitude_indices_type)
+
+    @property
+    def include_all_amplitudes(self) -> bool:
+        """Return whether amplitudes for every step should be included."""
+        return self._form.get("includeAllAmplitudes", "false").lower() == "true"
 
     @property
     def device(self) -> DeviceType:

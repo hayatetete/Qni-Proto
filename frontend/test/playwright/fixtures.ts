@@ -1,4 +1,5 @@
-import { test as base, Locator } from "@playwright/test";
+import { test as base } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { getCircuitInfo } from "./test-helpers";
 
 type QuantumCircuitFixtures = {

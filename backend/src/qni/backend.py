@@ -7,6 +7,9 @@ using Flask and Qiskit for quantum computations.
 from __future__ import annotations
 
 import json
+import os
+from contextlib import suppress
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from flask import Flask, Response, jsonify, request
@@ -26,9 +29,17 @@ from qni.cached_qiskit_runner import CachedQiskitRunner
 from qni.circuit_request_data import CircuitRequestData
 from qni.logging_config import setup_custom_logger
 from qni.qiskit_circuit_builder import QiskitCircuitBuilder
+from qni.qiskit_runner import SimulationTimeoutError
+from qni.types import DeviceType
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
 CORS(app)
+
+MAX_QUBITS = 32
+STATEVECTOR_BYTES_PER_AMPLITUDE = 16
+MEMORY_SAFETY_FRACTION = 0.6
+BYTES_PER_KIBIBYTE = 1024
 
 setup_custom_logger()
 cached_qiskit_runner = CachedQiskitRunner(app.logger)
@@ -37,7 +48,13 @@ editor_drafts: dict[str, dict] = {}
 
 @app.route("/editor-drafts/<draft_id>", methods=["GET", "PUT", "DELETE"])
 def editor_draft(draft_id: str) -> tuple[Response, int]:
-    """Store and retrieve the latest circuit from one Qni editor session."""
+    """Store and retrieve the latest circuit from one Qni editor session.
+
+    Returns
+    -------
+        tuple[Response, int]: JSON response and HTTP status code.
+
+    """
     if request.method == "DELETE":
         editor_drafts.pop(draft_id, None)
         return jsonify({"ok": True}), 200
@@ -53,13 +70,15 @@ def editor_draft(draft_id: str) -> tuple[Response, int]:
     qubit_count = payload.get("qubit_count")
     code = payload.get("code")
     warnings = payload.get("warnings", [])
-    if (
-        not isinstance(steps, list)
-        or not isinstance(qubit_count, int)
-        or qubit_count < 1
-        or not isinstance(code, str)
-        or not isinstance(warnings, list)
-        or not all(isinstance(warning, str) for warning in warnings)
+    valid_qubit_count = isinstance(qubit_count, int) and qubit_count >= 1
+    valid_warnings = isinstance(warnings, list) and all(
+        isinstance(warning, str) for warning in warnings
+    )
+    if not (
+        isinstance(steps, list)
+        and valid_qubit_count
+        and isinstance(code, str)
+        and valid_warnings
     ):
         return jsonify({"error": "Invalid editor draft"}), 400
 
@@ -113,15 +132,150 @@ def handle_circuit_request() -> tuple[Response, int]:
 
     """
     circuit_request_data = CircuitRequestData(request.form)
+    validation_error = _validate_demo_request(circuit_request_data)
+    if validation_error is not None:
+        return jsonify({"error": validation_error}), 400
+    memory_error = _simulation_memory_error(circuit_request_data)
+    if memory_error is not None:
+        return jsonify({"error": memory_error}), 507
     _log_request_data(circuit_request_data)
 
-    qiskit_step_results = cached_qiskit_runner.run(circuit_request_data)
+    try:
+        qiskit_step_results = cached_qiskit_runner.run(circuit_request_data)
+    except SimulationTimeoutError as exc:
+        app.logger.warning("Simulation timed out: %s", exc)
+        return jsonify({"error": str(exc)}), 504
     step_results = _convert_and_filter_qiskit_step_results(
         qiskit_step_results,
         circuit_request_data,
     )
-    app.logger.info("step_results = %s", step_results)
+    app.logger.info("Returning %d cached step results", len(step_results))
     return jsonify(step_results), 200
+
+
+def _validate_demo_request(request_data: CircuitRequestData) -> str | None:
+    """Reject inputs outside the bounded state-vector demo contract.
+
+    Returns
+    -------
+        str | None: Validation error, or ``None`` when the request is valid.
+
+    """
+    if request_data.qubit_count < 1 or request_data.qubit_count > MAX_QUBITS:
+        return f"qubitCount must be between 1 and {MAX_QUBITS}."
+    if not isinstance(request_data.steps, list):
+        return "steps must be a list."
+    if request_data.until_step_index < 0 or request_data.until_step_index >= len(
+        request_data.steps
+    ):
+        return "untilStepIndex is outside the circuit steps."
+    return None
+
+
+def _simulation_memory_error(request_data: CircuitRequestData) -> str | None:
+    """Return an error before Aer allocates a state vector that will not fit.
+
+    Returns
+    -------
+        str | None: A user-facing memory error, or ``None`` when it can run.
+
+    """
+    available = _available_memory_bytes()
+    if available is None:
+        return (
+            "Unable to determine available memory for state-vector simulation. "
+            "Run QniNotebook in the provided Linux container or configure an "
+            "environment that exposes available system memory."
+        )
+
+    required = _estimated_simulation_memory_bytes(
+        request_data.qubit_count,
+        len(request_data.steps),
+    )
+    budget = int(available * MEMORY_SAFETY_FRACTION)
+    if required <= budget:
+        return None
+
+    if request_data.device == DeviceType.GPU:
+        recovery = (
+            "GPU simulation is already selected. Ensure the GPU has enough VRAM "
+            "and the host has enough RAM for returned state snapshots, or reduce "
+            "the qubit count or circuit steps."
+        )
+    else:
+        recovery = (
+            "Reduce the qubit count or circuit steps, use a machine with more RAM, "
+            "or rebuild with VITE_USE_GPU=true and run with a CUDA-enabled Qiskit "
+            "Aer GPU that has enough VRAM. GPU execution does not reduce the "
+            "state-vector memory requirement."
+        )
+
+    return (
+        "Insufficient memory for state-vector simulation: "
+        f"estimated {_format_bytes(required)} required, "
+        f"{_format_bytes(available)} available. {recovery}"
+    )
+
+
+def _estimated_simulation_memory_bytes(qubit_count: int, step_count: int) -> int:
+    """Conservatively estimate Aer work buffers and saved step snapshots.
+
+    Returns
+    -------
+        int: Estimated peak memory usage in bytes.
+
+    """
+    amplitudes = 1 << qubit_count
+    snapshot_count = max(1, step_count)
+    simulator_bytes = amplitudes * STATEVECTOR_BYTES_PER_AMPLITUDE * 4
+    saved_result_bytes = amplitudes * 96 * snapshot_count
+    return simulator_bytes + saved_result_bytes
+
+
+def _available_memory_bytes() -> int | None:
+    """Return memory available to this process, including a cgroup limit.
+
+    Returns
+    -------
+        int | None: Available bytes, or ``None`` when the OS does not expose it.
+
+    """
+    candidates: list[int] = []
+    try:
+        with Path("/proc/meminfo").open(encoding="utf-8") as meminfo:
+            for line in meminfo:
+                if line.startswith("MemAvailable:"):
+                    candidates.append(int(line.split()[1]) * 1024)
+                    break
+    except (OSError, ValueError, IndexError):
+        with suppress(AttributeError, OSError, ValueError):
+            candidates.append(
+                int(os.sysconf("SC_AVPHYS_PAGES"))
+                * int(os.sysconf("SC_PAGE_SIZE"))
+            )
+
+    try:
+        limit_text = Path("/sys/fs/cgroup/memory.max").read_text(
+            encoding="utf-8"
+        ).strip()
+        used_text = Path("/sys/fs/cgroup/memory.current").read_text(
+            encoding="utf-8"
+        ).strip()
+        if limit_text != "max":
+            candidates.append(max(0, int(limit_text) - int(used_text)))
+    except (OSError, ValueError):
+        pass
+
+    return min(candidates) if candidates else None
+
+
+def _format_bytes(value: int) -> str:
+    amount = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if amount < BYTES_PER_KIBIBYTE:
+            return f"{amount:.1f} {unit}"
+        amount /= BYTES_PER_KIBIBYTE
+    return f"{amount:.1f} TiB"
 
 
 class EmptyStepsError(ValueError):
@@ -206,19 +360,30 @@ def _convert_and_filter_qiskit_step_results(
     circuit_request_data: CircuitRequestData,
 ) -> list[StepResult]:
     return [
-        _convert_qiskit_step_result(each, circuit_request_data)
-        for each in qiskit_step_results
+        _convert_qiskit_step_result(
+            each,
+            circuit_request_data,
+            include_amplitudes=(
+                circuit_request_data.include_all_amplitudes
+                or index == circuit_request_data.until_step_index
+            ),
+        )
+        for index, each in enumerate(qiskit_step_results)
     ]
 
 
 def _convert_qiskit_step_result(
     qiskit_step_result: QiskitStepResult,
     circuit_request_data: CircuitRequestData,
+    *,
+    include_amplitudes: bool = True,
 ) -> StepResult:
     measured_bits = qiskit_step_result["measuredBits"]
     bloch_vectors = qiskit_step_result.get("blochVectors", {})
 
-    amplitudes_qiskit = qiskit_step_result.get("amplitudes", None)
+    amplitudes_qiskit = (
+        qiskit_step_result.get("amplitudes", None) if include_amplitudes else None
+    )
     if amplitudes_qiskit is None:
         return {"measuredBits": measured_bits, "blochVectors": bloch_vectors}
 

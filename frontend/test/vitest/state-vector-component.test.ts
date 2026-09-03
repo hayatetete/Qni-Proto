@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { QubitCircle } from "../../src/qubit-circle";
 import { StateVectorComponent } from "../../src";
 import { STATE_VECTOR_EVENTS } from "../../src/state-vector-events";
+import { stateVectorFittingAspectIndex } from "../../src/state-vector-layout";
 
 describe("StateVectorComponent", () => {
   let stateVector: StateVectorComponent;
@@ -65,6 +66,14 @@ describe("StateVectorComponent", () => {
     expect(stateVector.qubitCircleAt(15)?.position.y).toBe(
       stateVector.qubitCircleAt(0)?.position.y
     );
+  });
+
+  it("should choose a 4 by 4 grid for sixteen states in a narrow notebook panel", () => {
+    expect(stateVectorFittingAspectIndex(4, 244, 331)).toBe(2);
+  });
+
+  it("should choose a wider grid when the notebook panel has enough width", () => {
+    expect(stateVectorFittingAspectIndex(4, 884, 331)).toBe(3);
   });
 
   it("should redraw newly exposed circles when viewport size grows", () => {

@@ -40,6 +40,18 @@ describe("QubitCircle", () => {
   });
 
   describe("phase", () => {
+    it("draws zero phase upward and keeps it unchanged when set again", () => {
+      qubitCircle.probability = 100;
+
+      const phaseHand = qubitCircle["phaseHand"];
+      expect(phaseHand.height).toBeGreaterThan(phaseHand.width);
+      expect(phaseHand.y).toBe(0);
+      expect(qubitCircle["phaseContainer"].rotation).toBe(0);
+
+      qubitCircle.phase = 0;
+      expect(qubitCircle["phaseContainer"].rotation).toBe(0);
+    });
+
     it("should set phase correctly", () => {
       qubitCircle.phase = Math.PI;
       expect(qubitCircle.phase).toBe(Math.PI);

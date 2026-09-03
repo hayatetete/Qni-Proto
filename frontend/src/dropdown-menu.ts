@@ -1,9 +1,13 @@
 export class DropdownMenu {
   private activeClass = "bg-neutral-200";
+  private menuButton: HTMLElement | null;
+  private menuDropdown: HTMLElement | null;
   private algorithmsButton: HTMLElement | null;
   private algorithmDropdown: HTMLElement | null;
 
   constructor() {
+    this.menuButton = document.getElementById("menu-button");
+    this.menuDropdown = document.getElementById("menu-dropdown");
     this.algorithmsButton = document.getElementById(
       "quantum-algorithms"
     );
@@ -11,7 +15,15 @@ export class DropdownMenu {
       "quantum-algorithms-dropdown"
     );
 
-    document.addEventListener("click", this.maybeHideMenuDropdown.bind(this));
+    this.menuButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleMenuDropdown();
+    });
+    this.menuDropdown?.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    document.addEventListener("click", this.maybeHideDropdowns.bind(this));
 
     if (this.algorithmsButton && this.algorithmDropdown) {
       this.algorithmsButton.addEventListener("click", (e) => {
@@ -27,8 +39,16 @@ export class DropdownMenu {
     }
   }
 
-  private maybeHideMenuDropdown(event: MouseEvent): void {
+  private maybeHideDropdowns(event: MouseEvent): void {
     const clickedEl = event.target as HTMLElement;
+    if (
+      this.menuDropdown &&
+      !this.menuDropdown.classList.contains("hidden") &&
+      !this.menuDropdown.contains(clickedEl) &&
+      !this.menuButton?.contains(clickedEl)
+    ) {
+      this.hideMenuDropdown();
+    }
     if (
       this.algorithmDropdown &&
       !this.algorithmDropdown.classList.contains("hidden") &&
@@ -38,6 +58,25 @@ export class DropdownMenu {
     ) {
       this.hideAlgorithmDropdown();
     }
+  }
+
+  private toggleMenuDropdown(): void {
+    if (!this.menuDropdown || !this.menuButton) return;
+    const opening = this.menuDropdown.classList.contains("hidden");
+    if (opening) {
+      this.menuDropdown.classList.remove("hidden");
+      this.menuButton.classList.add(this.activeClass);
+      this.menuButton.setAttribute("aria-expanded", "true");
+      return;
+    }
+    this.hideMenuDropdown();
+  }
+
+  private hideMenuDropdown(): void {
+    this.menuDropdown?.classList.add("hidden");
+    this.menuButton?.classList.remove(this.activeClass);
+    this.menuButton?.setAttribute("aria-expanded", "false");
+    this.hideAlgorithmDropdown();
   }
 
   private toggleAlgorithmDropdown(): void {

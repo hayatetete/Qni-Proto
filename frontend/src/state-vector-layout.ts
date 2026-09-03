@@ -43,6 +43,43 @@ export function stateVectorAspectOptions(
   }));
 }
 
+export function stateVectorFittingAspectIndex(
+  qubitCount: QubitCount,
+  viewportWidth: number,
+  viewportHeight: number,
+): StateVectorAspectIndex {
+  const availableWidth = Math.max(1, viewportWidth);
+  const availableHeight = Math.max(1, viewportHeight);
+  let bestAspectIndex = stateVectorDefaultAspectIndex(qubitCount);
+  let bestScale = -1;
+  let bestAspectDistance = Number.POSITIVE_INFINITY;
+  const viewportAspect = availableWidth / availableHeight;
+
+  for (const option of stateVectorAspectOptions(qubitCount)) {
+    const layout = new StateVectorLayout(qubitCount);
+    layout.aspectIndex = option.aspectIndex;
+    const scale = Math.min(
+      1,
+      availableWidth / layout.width,
+      availableHeight / layout.height,
+    );
+    const aspectDistance = Math.abs(
+      Math.log(layout.width / layout.height / viewportAspect),
+    );
+    if (
+      scale > bestScale + Number.EPSILON ||
+      (Math.abs(scale - bestScale) <= Number.EPSILON &&
+        aspectDistance < bestAspectDistance)
+    ) {
+      bestScale = scale;
+      bestAspectDistance = aspectDistance;
+      bestAspectIndex = option.aspectIndex;
+    }
+  }
+
+  return bestAspectIndex;
+}
+
 export class StateVectorLayout {
   private static readonly AGGREGATE_CELL_PITCH_THRESHOLD = spacingInPx(2.5);
 

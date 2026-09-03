@@ -27,6 +27,10 @@ _CIRCUIT_STEP_LAYOUTS: dict[
 DEFAULT_VIEWER_HEIGHT = 480
 DEFAULT_VIEWER_WIDTH = "100%"
 DEFAULT_BACKEND_PORT = 8000
+DEFAULT_FRONTEND_PORT = 5173
+MAX_QUBITS = 32
+NOTEBOOK_TOOLBAR_HEIGHT = 45
+NOTEBOOK_STATE_HEADER_HEIGHT = 44
 QniView = Literal["notebook", "state", "circuit"]
 QniInteractionMode = Literal["edit", "inspect"]
 QniStep = int | Literal["last"]
@@ -281,8 +285,19 @@ class QniJupyterServer:
         self._log_file.write(f"port: {self.port}\n")
         self._log_file.flush()
 
+        vendored_yarn = self.frontend_dir / ".yarn" / "releases" / "yarn-4.4.1.cjs"
+        package_manager = (
+            ["node", str(vendored_yarn)] if vendored_yarn.is_file() else ["yarn"]
+        )
         self.process = subprocess.Popen(
-            ["yarn", "dev", "--host", "127.0.0.1", "--port", str(self.port)],
+            [
+                *package_manager,
+                "dev",
+                "--host",
+                os.environ.get("QNI_BIND_HOST", "127.0.0.1"),
+                "--port",
+                str(self.port),
+            ],
             cwd=self.frontend_dir,
             env=env,
             stdout=self._log_file,
@@ -407,8 +422,13 @@ class QniJupyterBackendServer:
                     "print('before import qni.backend', flush=True); "
                     "from qni.backend import app; "
                     "print('after import qni.backend', flush=True); "
-                    "app.run(host='127.0.0.1', port=%d, debug=False, use_reloader=False)"
-                ) % (str(backend_src), self.port),
+                    "app.run(host=%r, port=%d, debug=False, use_reloader=False)"
+                )
+                % (
+                    str(backend_src),
+                    os.environ.get("QNI_BIND_HOST", "127.0.0.1"),
+                    self.port,
+                ),
             ],
             cwd=backend_dir,
             env=env,
@@ -497,6 +517,7 @@ def open(
     port: int | None = None,
     view: QniView = "notebook",
     active_step: QniStep | None = None,
+    focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
     display: Literal[True] = True,
 ) -> QniEditor | None: ...
@@ -514,6 +535,7 @@ def open(
     port: int | None = None,
     view: QniView = "notebook",
     active_step: QniStep | None = None,
+    focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
     display: Literal[False] = False,
 ) -> QniViewer: ...
@@ -530,6 +552,7 @@ def open(
     port: int | None = None,
     view: QniView = "notebook",
     active_step: QniStep | None = None,
+    focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
     display: bool = True,
 ) -> QniViewer | None:
@@ -548,31 +571,47 @@ def open(
     if quri_code is not None:
         steps, inferred_qubit_count, warnings = quri_code_to_steps(quri_code)
         qubit_count = qubit_count if qubit_count is not None else inferred_qubit_count
+    if qubit_count is not None and not 1 <= qubit_count <= MAX_QUBITS:
+        raise ValueError(
+            f"QniNotebook supports 1-{MAX_QUBITS} qubits; "
+            f"got {qubit_count}."
+        )
     if view != "notebook" and height == DEFAULT_VIEWER_HEIGHT:
         height = _preferred_viewer_height(view, steps or [], qubit_count)
     if view != "notebook" and width == DEFAULT_VIEWER_WIDTH:
         width = _preferred_viewer_width(view, steps or [], qubit_count)
     active_step_index = _resolve_active_step_index(active_step, steps or [])
 
-    backend_server = _backend_server(DEFAULT_BACKEND_PORT)
+    backend_port = int(os.environ.get("QNI_BACKEND_PORT", DEFAULT_BACKEND_PORT))
+    frontend_port = (
+        port
+        if port is not None
+        else int(os.environ.get("QNI_FRONTEND_PORT", 0)) or None
+    )
+    public_host = os.environ.get("QNI_PUBLIC_HOST", "127.0.0.1")
+    backend_server = _backend_server(backend_port)
     backend_server.start()
 
-    server = _server(port)
+    backend_base_url = f"http://{public_host}:{backend_server.port}"
+    server = _server(
+        frontend_port,
+        backend_url=f"{backend_base_url}/backend.json",
+    )
     server.start()
 
     editable = mode == "edit"
     draft_id = uuid.uuid4().hex if editable else None
-    backend_base_url = f"http://127.0.0.1:{backend_server.port}"
-
     state = {
         "steps": steps or [],
         "view": view,
         "editable": editable,
+        "simulation_seed": uuid.uuid4().int & 0xFFFFFFFF,
         **(
             {"active_step_index": active_step_index}
             if active_step_index is not None
             else {}
         ),
+        **({"focus_active_step": True} if focus_active_step else {}),
         **({"qubit_count": qubit_count} if qubit_count is not None else {}),
         "backendUrl": f"{backend_base_url}/backend.json",
         **({"draft_id": draft_id} if draft_id is not None else {}),
@@ -582,7 +621,7 @@ def open(
     viewer_class = QniEditor if editable else QniViewer
     viewer = viewer_class(
         url=(
-            f"http://127.0.0.1:{server.port}/jupyter.html"
+            f"http://{public_host}:{server.port}/jupyter.html"
             f"?state={encoded_state}&height={height}&qniCacheBust={cache_bust}"
         ),
         height=height,
@@ -691,6 +730,7 @@ def circuit(
         width=width,
         port=port,
         view="circuit",
+        active_step="last",
         mode=mode,
         display=display,
     )
@@ -750,10 +790,12 @@ def _preferred_inspect_height(
     steps: list[list[dict[str, Any]]],
     qubit_count: int | None,
 ) -> int:
-    """Fit circuit and state content without leaving excessive blank space."""
+    """Fit both panes vertically, including the notebook-only chrome."""
     natural_height = max(
-        _preferred_circuit_height(steps, qubit_count),
-        _preferred_state_height(qubit_count),
+        NOTEBOOK_TOOLBAR_HEIGHT + _preferred_circuit_height(steps, qubit_count),
+        NOTEBOOK_TOOLBAR_HEIGHT
+        + NOTEBOOK_STATE_HEADER_HEIGHT
+        + _preferred_state_height(qubit_count),
     )
     return max(240, min(720, natural_height))
 
@@ -764,15 +806,22 @@ def show_circuit(
     height: int = DEFAULT_VIEWER_HEIGHT,
     width: str | int = DEFAULT_VIEWER_WIDTH,
     port: int | None = None,
+    scroll_to: QniStep | None = None,
     display: bool = True,
 ) -> QniViewer | None:
-    """Show only the circuit, without the state-vector panel."""
+    """Show the circuit and any final measurement, without the state panel.
+
+    Set ``scroll_to`` to a step index or ``"last"`` to bring that step into
+    view when the circuit first opens.
+    """
     return open(
         circuit=circuit,
         height=height,
         width=width,
         port=port,
         view="circuit",
+        active_step=scroll_to if scroll_to is not None else "last",
+        focus_active_step=scroll_to is not None,
         mode="inspect",
         display=display,
     )
@@ -905,8 +954,16 @@ def _preferred_circuit_height(
 ) -> int:
     inferred_qubits = qubit_count or _required_qubit_count_from_steps(steps)
     wire_count = max(1, int(inferred_qubits))
+    # Larger circuits need breathing room around the wires and floating controls.
+    # Reserve two extra wire rows for 5-6 qubits and three for 7+ qubits.
+    if wire_count >= 7:
+        visible_wire_rows = wire_count + 3
+    elif wire_count >= 5:
+        visible_wire_rows = wire_count + 2
+    else:
+        visible_wire_rows = wire_count
     # Qni dropzones are 32px gates with a 1.5x vertical cell and compact padding.
-    return max(120, 16 + wire_count * 48 + 32)
+    return max(120, 16 + visible_wire_rows * 48 + 32)
 
 
 def _preferred_circuit_width(steps: list[list[dict[str, Any]]]) -> int:
@@ -991,22 +1048,85 @@ def quri_circuit_to_steps(
         return steps, qubit_count, ()
 
     steps: list[list[dict[str, Any]]] = []
-    warnings: list[str] = []
+    unsupported: list[str] = []
     for index, gate in enumerate(circuit.gates):
+        gate_name = getattr(gate, "name", type(gate).__name__)
+        control_values = tuple(getattr(gate, "control_values", ()))
+        if control_values and any(int(value) != 1 for value in control_values):
+            unsupported.append(f"{gate_name} with anti-control at gate index {index}")
+            continue
         operation = _quri_gate_to_operation(gate)
         if operation is None:
-            gate_name = getattr(gate, "name", type(gate).__name__)
-            warnings.append(f'QURI gate "{gate_name}" at index {index} was skipped.')
+            unsupported.append(f'{gate_name} at gate index {index}')
             continue
-        if getattr(gate, "name", None) in {"RX", "RY", "RZ", "U1"}:
-            warnings.append(
-                f'QURI gate "{gate.name}" at index {index} was displayed, '
-                "but its angle is not restored by the current Qni loader."
-            )
         if operation:
-            steps.append([operation])
+            _append_operation_to_parallel_step(steps, operation)
 
-    return steps, int(circuit.qubit_count), tuple(warnings)
+    if unsupported:
+        raise ValueError(
+            "Unsupported QURI Parts operations; visualization stopped to avoid "
+            "showing a different circuit: " + ", ".join(unsupported)
+        )
+    return steps, int(circuit.qubit_count), ()
+
+
+def _append_operation_to_parallel_step(
+    steps: list[list[dict[str, Any]]], operation: dict[str, Any]
+) -> None:
+    """Place equivalent operations together when neither gates nor wires overlap."""
+    occupied_qubits = {
+        int(index)
+        for key in ("targets", "controls")
+        for index in operation.get(key, ())
+    }
+    if steps:
+        current_operation = steps[-1][-1]
+        current_step_qubits = {
+            int(index)
+            for step_operation in steps[-1]
+            for key in ("targets", "controls")
+            for index in step_operation.get(key, ())
+        }
+        same_gate_shape = (
+            operation.get("type") == current_operation.get("type")
+            and len(operation.get("targets", ()))
+            == len(current_operation.get("targets", ()))
+            and len(operation.get("controls", ()))
+            == len(current_operation.get("controls", ()))
+        )
+        connection_overlaps = any(
+            _operation_spans_overlap(operation, step_operation)
+            for step_operation in steps[-1]
+        )
+        if (
+            same_gate_shape
+            and occupied_qubits.isdisjoint(current_step_qubits)
+            and not connection_overlaps
+        ):
+            steps[-1].append(operation)
+            return
+    steps.append([operation])
+
+
+def _operation_spans_overlap(
+    first: dict[str, Any], second: dict[str, Any]
+) -> bool:
+    """Return whether two operations occupy overlapping vertical wire spans."""
+    first_qubits = [
+        int(index)
+        for key in ("targets", "controls", "antiControls")
+        for index in first.get(key, ())
+    ]
+    second_qubits = [
+        int(index)
+        for key in ("targets", "controls", "antiControls")
+        for index in second.get(key, ())
+    ]
+    if not first_qubits or not second_qubits:
+        return False
+    return max(min(first_qubits), min(second_qubits)) <= min(
+        max(first_qubits), max(second_qubits)
+    )
 
 
 def _remember_circuit_step_layout(
@@ -1287,6 +1407,8 @@ def _quri_gate_to_operation(gate: Any) -> dict[str, Any] | None:
     if name == "SWAP" and len(targets) == 2:
         return _operation("Swap", targets)
     if name == "Measurement":
+        if classical_indices and tuple(map(int, classical_indices)) != tuple(targets):
+            return None
         operation = _operation("Measure", targets)
         if classical_indices:
             operation["classical_indices"] = [

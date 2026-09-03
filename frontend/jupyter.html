@@ -3,6 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      html[data-qni-hide-menu="true"] #menu-container {
+        display: none;
+      }
+
+      html[data-qni-read-only-notebook="true"] #demo-header {
+        display: flex;
+      }
+
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
     <script>
@@ -11,13 +21,21 @@
         if (!rawState) return;
 
         try {
-          const view = JSON.parse(rawState).view;
+          const state = JSON.parse(rawState);
+          const view = state.view ?? "notebook";
+          const readOnlyNotebook =
+            view === "notebook" && state.editable === false;
+
+          if (readOnlyNotebook) {
+            document.documentElement.dataset.qniReadOnlyNotebook = "true";
+          }
+
           if (view === "state" || view === "circuit") {
             document.documentElement.dataset.qniViewMode = view;
-            document.documentElement.style.setProperty(
-              "--qni-jupyter-menu-display",
-              "none",
-            );
+          }
+
+          if (readOnlyNotebook || view === "state" || view === "circuit") {
+            document.documentElement.dataset.qniHideMenu = "true";
           }
         } catch {
           // The TypeScript bridge reports invalid state after the app loads.
@@ -28,6 +46,13 @@
   </head>
   <body class="m-0 overflow-hidden">
     <div id="app" class="relative">
+      <div
+        id="demo-header"
+        class="fixed top-0 left-0 right-0 z-40 hidden min-h-11 items-center gap-2 border-b border-gray-300 bg-white px-3 py-1"
+      >
+        <strong class="whitespace-nowrap text-sm text-neutral-900">QniNotebook</strong>
+        <span id="demo-guidance" class="truncate text-xs text-neutral-600">回路のステップ境界を選ぶと、その時点までの状態を確認できます</span>
+      </div>
       <div
         class="fixed top-0 left-0 right-0 z-40 flex min-h-11 items-center gap-1 border-b border-gray-300 bg-white px-2 py-1"
         id="menu-container"

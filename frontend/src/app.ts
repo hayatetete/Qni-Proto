@@ -3,7 +3,6 @@ import { BlochSphere } from "./bloch-sphere";
 import { CircuitFrame } from "./circuit-frame";
 import { CircuitStep } from "./circuit-step";
 import { Colors } from "./colors";
-import { DropdownMenu } from "./dropdown-menu";
 import { Dropzone } from "./dropzone";
 import { FrameDivider } from "./frame-divider";
 import { OperationComponent } from "./operation-component";
@@ -46,6 +45,7 @@ export class App {
   private static readonly JUPYTER_TOOLBAR_HEIGHT = 45;
   private static readonly JUPYTER_CODE_PANEL_HEADER_HEIGHT = 52;
   private static readonly JUPYTER_STATE_PANEL_HEADER_HEIGHT = 88;
+  private static readonly JUPYTER_READ_ONLY_STATE_PANEL_HEADER_HEIGHT = 44;
   private static readonly JUPYTER_VIEWPORT_DEFAULT_HEIGHT = 480;
   private static readonly JUPYTER_VIEWPORT_MIN_HEIGHT = 260;
   private static readonly JUPYTER_VIEWPORT_MAX_HEIGHT = 720;
@@ -78,6 +78,9 @@ export class App {
   private jupyterRightPane: "code" | "state-vector" = "state-vector";
   private jupyterViewMode: JupyterViewMode = "notebook";
   private jupyterReadOnly = false;
+  private simulationRequestId = 0;
+  private simulationSeed = crypto.getRandomValues(new Uint32Array(1))[0];
+  private readonly viewerMeasurementResults = new Map<string, 0 | 1>();
   private jupyterZoom = 1;
   private jupyterRenderedZoom = 1;
   private readonly jupyterZoomMin = 0.5;
@@ -133,6 +136,10 @@ export class App {
 
   get stateVector(): StateVectorComponent {
     return this.stateVectorFrame!.stateVector;
+  }
+
+  setSimulationSeed(seed: number): void {
+    this.simulationSeed = seed >>> 0;
   }
 
   constructor(elementId: string) {
@@ -191,8 +198,6 @@ export class App {
         });
       }
 
-      new DropdownMenu();
-
       this.setupShareMenu();
 
       this.setupAlgorithms();
@@ -215,6 +220,7 @@ export class App {
     qubitCount?: number;
     title?: string;
     activeStepIndex?: number;
+    focusActiveStep?: boolean;
     editable?: boolean;
   }): void {
     this.jupyterReadOnly = circuitJson.editable === false;
@@ -248,6 +254,9 @@ export class App {
       this.circuit.setPresentationMode(false);
     }
     this.applyJupyterFrameLayout();
+    if (circuitJson.focusActiveStep) {
+      this.circuitFrame.animateStepIntoView(activeStepIndex);
+    }
     this.runSimulator();
     this.scheduleJupyterViewerResize();
   }
@@ -551,7 +560,7 @@ export class App {
   }
 
   private jupyterToolbarHeight(): number {
-    return this.jupyterViewMode === "notebook" && !this.jupyterReadOnly
+    return this.jupyterViewMode === "notebook"
       ? App.JUPYTER_TOOLBAR_HEIGHT
       : 0;
   }
@@ -564,8 +573,12 @@ export class App {
       return 0;
     }
 
-    return this.jupyterRightPane === "code"
-      ? App.JUPYTER_CODE_PANEL_HEADER_HEIGHT
+    if (this.jupyterRightPane === "code") {
+      return App.JUPYTER_CODE_PANEL_HEADER_HEIGHT;
+    }
+
+    return this.jupyterReadOnly
+      ? App.JUPYTER_READ_ONLY_STATE_PANEL_HEADER_HEIGHT
       : App.JUPYTER_STATE_PANEL_HEADER_HEIGHT;
   }
 
@@ -580,9 +593,14 @@ export class App {
       this.jupyterViewMode === "circuit";
     this.circuitFrame.setPaletteVisible(!readOnlyMode && this.jupyterViewMode !== "circuit");
     this.circuit.setPresentationMode(readOnlyMode);
+    this.circuit.setStepMarkersVisible(this.jupyterViewMode === "notebook");
     this.stateVectorFrame.setContentPinnedToTopLeft(!this.jupyterReadOnly);
     this.stateVectorFrame.setPresentationInset(
-      this.jupyterViewMode === "state" ? 8 : 0,
+      this.jupyterViewMode === "state" ||
+        (this.jupyterViewMode === "notebook" &&
+          this.jupyterRightPane === "state-vector")
+        ? 8
+        : 0,
     );
     if (this.jupyterViewMode === "notebook") {
       this.resetJupyterZoom();
@@ -617,10 +635,14 @@ export class App {
     const contentTop =
       this.jupyterToolbarHeight() + this.jupyterSidePanelHeaderHeight();
 
+    const toolbarHeight = this.jupyterToolbarHeight();
     this.circuitFrame.visible = true;
     this.circuitFrame.x = 0;
-    this.circuitFrame.y = 0;
-    this.circuitFrame.resize(circuitWidth, this.app.screen.height);
+    this.circuitFrame.y = toolbarHeight;
+    this.circuitFrame.resize(
+      circuitWidth,
+      Math.max(0, this.app.screen.height - toolbarHeight),
+    );
 
     this.stateVectorFrame.x = circuitWidth;
     this.stateVectorFrame.repositionAndResize(
@@ -654,6 +676,7 @@ export class App {
 
   private applyJupyterDomChrome(): void {
     const menuContainer = document.getElementById("menu-container");
+    const demoHeader = document.getElementById("demo-header");
     if (menuContainer) {
       menuContainer.classList.toggle(
         "hidden",
@@ -661,6 +684,12 @@ export class App {
           this.jupyterViewMode === "state" ||
           this.jupyterViewMode === "circuit",
       );
+    }
+    if (demoHeader) {
+      const visible =
+        this.jupyterReadOnly && this.jupyterViewMode === "notebook";
+      demoHeader.classList.toggle("hidden", !visible);
+      demoHeader.classList.toggle("flex", visible);
     }
   }
 
@@ -795,7 +824,6 @@ export class App {
     this.circuitFrame.on(OPERATION_EVENTS.GRABBED, this.grabGate, this);
     this.circuitFrame.on(OPERATION_EVENTS.MOUSE_LEFT, this.resetCursor, this);
     this.circuitFrame.on(OPERATION_EVENTS.DISCARDED, this.gateDiscarded, this);
-
     this.circuitFrame.on(
       CIRCUIT_STEP_EVENTS.ACTIVATED,
       this.runSimulator,
@@ -862,6 +890,19 @@ export class App {
   }
 
   protected handleServiceWorkerMessage(event: MessageEvent): void {
+    if (event.data.requestId !== this.simulationRequestId) {
+      return;
+    }
+    if (event.data.type === "error") {
+      this.showSimulationError(String(event.data.message || "Simulation failed."));
+      return;
+    }
+    if (event.data.type === "finish") {
+      this.applyViewerMeasurementResults();
+      this.element.dataset.state = "idle";
+      this.scheduleJupyterViewerResize();
+      return;
+    }
     if (!this.stateVector) {
       return;
     }
@@ -887,6 +928,9 @@ export class App {
             throw new Error(`${measurementGate} is not MeasurementGate`);
           }
           measurementGate.value = value;
+          if (value !== "") {
+            this.viewerMeasurementResults.set(`${stepIndex}:${bit}`, value);
+          }
         }
       }
     }
@@ -914,11 +958,24 @@ export class App {
 
     // ページの <div id="app" data-state="running"></div> を
     // <div id="app" data-state="idle"></div> に変更
-    const eventType = event.data.type;
-    if (eventType === "finish") {
-      this.element.dataset.state = "idle";
-      this.scheduleJupyterViewerResize();
+  }
+
+  private showSimulationError(message: string): void {
+    let banner = document.getElementById("simulation-error");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "simulation-error";
+      banner.setAttribute("role", "alert");
+      Object.assign(banner.style, {
+        position: "fixed", left: "12px", right: "12px", bottom: "12px",
+        zIndex: "100", padding: "10px 14px", borderRadius: "8px",
+        color: "#991b1b", background: "#fee2e2", border: "1px solid #fecaca",
+        font: "14px system-ui, sans-serif",
+      });
+      document.body.appendChild(banner);
     }
+    banner.textContent = `QniNotebook: ${message}`;
+    banner.hidden = false;
   }
 
   private updateStateVectorAmplitudes(amplitudes: {
@@ -1379,8 +1436,29 @@ export class App {
   }
 
   protected runSimulator() {
+    if (
+      this.jupyterViewMode === "circuit" &&
+      !this.circuit.steps.some((step) =>
+        step.operations.some((operation) => operation instanceof MeasurementGate),
+      )
+    ) {
+      this.element.dataset.state = "idle";
+      return;
+    }
     this.setAppStateToRunning();
     this.postMessageToWorker();
+  }
+
+  private applyViewerMeasurementResults(): void {
+    for (const [key, value] of this.viewerMeasurementResults) {
+      const [stepIndex, bit] = key.split(":").map(Number);
+      const operation = this.circuit
+        .fetchStep(stepIndex)
+        .fetchDropzone(bit).operation;
+      if (operation instanceof MeasurementGate) {
+        operation.value = value;
+      }
+    }
   }
 
   private setAppStateToRunning() {
@@ -1392,7 +1470,11 @@ export class App {
   }
 
   private postMessageToWorker(requestType: string = "circuit") {
+    this.simulationRequestId += 1;
+    document.getElementById("simulation-error")?.setAttribute("hidden", "");
     this.worker.postMessage({
+      requestId: this.simulationRequestId,
+      simulationSeed: this.simulationSeed,
       circuitJson: this.circuit.toJSON(),
       qubitCount: this.stateVector.qubitCount,
       untilStepIndex: this.circuit.activeStepIndex,
@@ -1665,11 +1747,23 @@ export class App {
     }
 
     const scale = isPresentation ? this.jupyterRenderedZoom : 1;
+    const stateVectorFitScale =
+      this.jupyterViewMode === "notebook" &&
+      this.jupyterRightPane === "state-vector" &&
+      this.stateVector.qubitCount <= 12
+        ? Math.min(
+            1,
+            Math.max(1, this.jupyterSidePanelWidth() - 16) /
+              Math.max(1, this.stateVector.width),
+            Math.max(1, this.jupyterSidePanelContentHeight() - 16) /
+              Math.max(1, this.stateVector.height),
+          )
+        : 1;
     this.circuitFrame.setPresentationScale(
       this.jupyterViewMode === "circuit" ? scale : 1,
     );
     this.stateVectorFrame.setPresentationScale(
-      this.jupyterViewMode === "state" ? scale : 1,
+      this.jupyterViewMode === "state" ? scale : stateVectorFitScale,
     );
   }
 
@@ -1791,9 +1885,13 @@ export class App {
     if (this.jupyterViewportHeightOverride !== null) {
       return this.jupyterViewportHeightOverride;
     }
-    const requestedHeight = Number(
-      new URLSearchParams(window.location.search).get("height"),
+    const heightParameter = new URLSearchParams(window.location.search).get(
+      "height",
     );
+    if (heightParameter === null) {
+      return App.JUPYTER_VIEWPORT_DEFAULT_HEIGHT;
+    }
+    const requestedHeight = Number(heightParameter);
     if (!Number.isFinite(requestedHeight)) {
       return App.JUPYTER_VIEWPORT_DEFAULT_HEIGHT;
     }

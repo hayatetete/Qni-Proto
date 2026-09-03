@@ -7,6 +7,7 @@ import { generateQuriCode, QuriCodeMode } from "./quri-code-generator";
 import {
   stateVectorAspectOptions,
   stateVectorDefaultAspectIndex,
+  stateVectorFittingAspectIndex,
   type StateVectorAspectIndex,
   type StateVectorAspectOption,
 } from "./state-vector-layout";
@@ -84,6 +85,7 @@ class JupyterSidePanel {
   private viewMode: JupyterViewMode = "notebook";
   private lastRenderKey = "";
   private renderTimer: number | null = null;
+  private lastLayoutDetail: JupyterLayoutDetail | null = null;
 
   constructor(private readonly app: App) {}
 
@@ -138,6 +140,7 @@ class JupyterSidePanel {
    */
   private createHeader(): HTMLElement {
     const header = document.createElement("div");
+    header.setAttribute("data-jupyter-side-panel-header", "true");
     header.className =
       "pointer-events-auto shrink-0 border-b border-gray-300 bg-white px-2 py-2";
 
@@ -415,11 +418,13 @@ class JupyterSidePanel {
    * Pixiから通知された右ペイン寸法をDOMパネルへ反映する。
    */
   private applyLayout(detail: JupyterLayoutDetail): void {
+    this.lastLayoutDetail = detail;
     if (this.viewMode === "state") {
       this.root.style.top = "8px";
       this.root.style.right = "8px";
       this.root.style.width = "220px";
       this.root.style.height = "auto";
+      this.fitStateVectorAspect(detail);
       return;
     }
 
@@ -427,6 +432,26 @@ class JupyterSidePanel {
     this.root.style.right = `${detail.right}px`;
     this.root.style.width = `${detail.width}px`;
     this.root.style.height = `${detail.contentTop + detail.contentHeight - detail.top}px`;
+    this.fitStateVectorAspect(detail);
+  }
+
+  private fitStateVectorAspect(detail: JupyterLayoutDetail): void {
+    if (this.stateVectorAspectCustomized || detail.width <= 0) {
+      return;
+    }
+
+    const aspectIndex = stateVectorFittingAspectIndex(
+      this.currentQubitCount(),
+      Math.max(1, detail.width - 16),
+      Math.max(1, detail.contentHeight - 16),
+    );
+    if (aspectIndex === this.stateVectorAspectIndex) {
+      return;
+    }
+
+    this.stateVectorAspectIndex = aspectIndex;
+    this.app.setJupyterStateVectorAspectIndex(aspectIndex);
+    this.syncAspectControls();
   }
 
   private applyViewModeChrome(): void {
@@ -499,6 +524,10 @@ class JupyterSidePanel {
       return;
     }
     this.lastRenderKey = renderKey;
+
+    if (this.lastLayoutDetail !== null) {
+      this.fitStateVectorAspect(this.lastLayoutDetail);
+    }
 
     const result = generateQuriCode(
       this.app.circuit.serialize(),
@@ -593,9 +622,6 @@ class JupyterSidePanel {
 
   private currentAspectOption(): StateVectorAspectOption {
     const qubitCount = this.currentQubitCount();
-    if (!this.stateVectorAspectCustomized) {
-      this.stateVectorAspectIndex = stateVectorDefaultAspectIndex(qubitCount);
-    }
     this.stateVectorAspectIndex = Math.min(
       qubitCount,
       Math.max(0, Math.round(this.stateVectorAspectIndex)),
