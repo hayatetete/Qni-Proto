@@ -15,14 +15,72 @@ def test_post_empty_circuit():
     assert "qubitCount" in res["error"]
 
 
-def test_rejects_circuit_above_demo_qubit_limit():
+def test_accepts_circuit_up_to_32_qubits_when_memory_is_available():
+    with (
+        patch("qni.backend._available_memory_bytes", return_value=2 * 1024**4),
+        patch("qni.backend.cached_qiskit_runner.run", return_value=[]),
+    ):
+        response = app.test_client().post(
+            "/backend.json",
+            data={"qubitCount": 32, "untilStepIndex": 0, "steps": "[[]]"},
+        )
+
+    assert response.status_code == 200
+
+
+def test_rejects_circuit_above_32_qubits():
     response = app.test_client().post(
         "/backend.json",
-        data={"qubitCount": 9, "untilStepIndex": 0, "steps": "[[]]"},
+        data={"qubitCount": 33, "untilStepIndex": 0, "steps": "[[]]"},
     )
 
     assert response.status_code == 400
-    assert "between 1 and 8" in response.get_json()["error"]
+    assert "between 1 and 32" in response.get_json()["error"]
+
+
+def test_rejects_simulation_that_will_not_fit_in_available_memory():
+    with patch("qni.backend._available_memory_bytes", return_value=8 * 1024**3):
+        response = app.test_client().post(
+            "/backend.json",
+            data={"qubitCount": 32, "untilStepIndex": 0, "steps": "[[]]"},
+        )
+
+    assert response.status_code == 507
+    error = response.get_json()["error"]
+    assert "Insufficient memory" in error
+    assert "available" in error
+    assert "VITE_USE_GPU=true" in error
+    assert "does not reduce the state-vector memory requirement" in error
+
+
+def test_gpu_memory_error_does_not_suggest_enabling_gpu_again():
+    with patch("qni.backend._available_memory_bytes", return_value=8 * 1024**3):
+        response = app.test_client().post(
+            "/backend.json",
+            data={
+                "qubitCount": 32,
+                "untilStepIndex": 0,
+                "steps": "[[]]",
+                "useGpu": "true",
+            },
+        )
+
+    assert response.status_code == 507
+    error = response.get_json()["error"]
+    assert "GPU simulation is already selected" in error
+    assert "enough VRAM" in error
+    assert "VITE_USE_GPU=true" not in error
+
+
+def test_rejects_simulation_when_available_memory_cannot_be_determined():
+    with patch("qni.backend._available_memory_bytes", return_value=None):
+        response = app.test_client().post(
+            "/backend.json",
+            data={"qubitCount": 2, "untilStepIndex": 0, "steps": "[[]]"},
+        )
+
+    assert response.status_code == 507
+    assert "Unable to determine available memory" in response.get_json()["error"]
 
 
 def test_rejects_step_index_outside_circuit():
@@ -112,7 +170,10 @@ def test_can_return_amplitudes_for_every_step_for_client_cache():
             "untilStepIndex": 0,
             "amplitudeIndices": "0,1",
             "includeAllAmplitudes": "true",
-            "steps": '[[{"type": "H", "targets": [0]}], [{"type": "X", "targets": [0]}]]',
+            "steps": (
+                '[[{"type": "H", "targets": [0]}], '
+                '[{"type": "X", "targets": [0]}]]'
+            ),
         },
     )
 

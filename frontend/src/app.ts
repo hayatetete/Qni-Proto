@@ -1436,6 +1436,15 @@ export class App {
   }
 
   protected runSimulator() {
+    if (
+      this.jupyterViewMode === "circuit" &&
+      !this.circuit.steps.some((step) =>
+        step.operations.some((operation) => operation instanceof MeasurementGate),
+      )
+    ) {
+      this.element.dataset.state = "idle";
+      return;
+    }
     this.setAppStateToRunning();
     this.postMessageToWorker();
   }
@@ -1740,7 +1749,8 @@ export class App {
     const scale = isPresentation ? this.jupyterRenderedZoom : 1;
     const stateVectorFitScale =
       this.jupyterViewMode === "notebook" &&
-      this.jupyterRightPane === "state-vector"
+      this.jupyterRightPane === "state-vector" &&
+      this.stateVector.qubitCount <= 12
         ? Math.min(
             1,
             Math.max(1, this.jupyterSidePanelWidth() - 16) /

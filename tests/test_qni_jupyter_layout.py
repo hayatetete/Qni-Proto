@@ -112,6 +112,42 @@ def test_adjacent_gates_on_disjoint_qubits_share_a_visual_step() -> None:
     ]
 
 
+def test_swap_connection_lines_that_overlap_use_separate_visual_steps() -> None:
+    circuit = FakeCircuit(
+        4,
+        [
+            FakeGate("SWAP", (1, 2)),
+            FakeGate("SWAP", (0, 3)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [{"type": "Swap", "targets": [1, 2]}],
+        [{"type": "Swap", "targets": [0, 3]}],
+    ]
+
+
+def test_non_overlapping_swap_connection_lines_share_a_visual_step() -> None:
+    circuit = FakeCircuit(
+        4,
+        [
+            FakeGate("SWAP", (0, 1)),
+            FakeGate("SWAP", (2, 3)),
+        ],
+    )
+
+    steps, _, _ = qni.quri_circuit_to_steps(circuit)
+
+    assert steps == [
+        [
+            {"type": "Swap", "targets": [0, 1]},
+            {"type": "Swap", "targets": [2, 3]},
+        ]
+    ]
+
+
 def test_gate_sharing_a_control_or_target_starts_a_new_visual_step() -> None:
     circuit = FakeCircuit(
         3,
@@ -258,6 +294,18 @@ def test_non_identity_measurement_mapping_stops_visualization() -> None:
         qni.quri_circuit_to_steps(circuit)
 
 
-def test_demo_qubit_limit_is_enforced_before_starting_servers() -> None:
-    with pytest.raises(ValueError, match="supports 1-8 qubits"):
-        qni.open(steps=[[]], qubit_count=9, display=False)
+def test_qubit_limit_is_enforced_before_starting_servers() -> None:
+    with pytest.raises(ValueError, match="supports 1-32 qubits"):
+        qni.open(steps=[[]], qubit_count=33, display=False)
+
+
+def test_32_qubit_input_is_accepted_before_simulation() -> None:
+    with (
+        patch.object(qni, "_backend_server") as backend_server,
+        patch.object(qni, "_server") as frontend_server,
+    ):
+        backend_server.return_value.port = 8000
+        frontend_server.return_value.port = 5173
+        viewer = qni.open(steps=[[]], qubit_count=32, display=False)
+
+    assert isinstance(viewer, qni.QniViewer)

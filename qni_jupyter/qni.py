@@ -28,7 +28,7 @@ DEFAULT_VIEWER_HEIGHT = 480
 DEFAULT_VIEWER_WIDTH = "100%"
 DEFAULT_BACKEND_PORT = 8000
 DEFAULT_FRONTEND_PORT = 5173
-MAX_DEMO_QUBITS = 8
+MAX_QUBITS = 32
 NOTEBOOK_TOOLBAR_HEIGHT = 45
 NOTEBOOK_STATE_HEADER_HEIGHT = 44
 QniView = Literal["notebook", "state", "circuit"]
@@ -571,9 +571,9 @@ def open(
     if quri_code is not None:
         steps, inferred_qubit_count, warnings = quri_code_to_steps(quri_code)
         qubit_count = qubit_count if qubit_count is not None else inferred_qubit_count
-    if qubit_count is not None and not 1 <= qubit_count <= MAX_DEMO_QUBITS:
+    if qubit_count is not None and not 1 <= qubit_count <= MAX_QUBITS:
         raise ValueError(
-            f"QniNotebook's initial demo supports 1-{MAX_DEMO_QUBITS} qubits; "
+            f"QniNotebook supports 1-{MAX_QUBITS} qubits; "
             f"got {qubit_count}."
         )
     if view != "notebook" and height == DEFAULT_VIEWER_HEIGHT:
@@ -1073,7 +1073,7 @@ def quri_circuit_to_steps(
 def _append_operation_to_parallel_step(
     steps: list[list[dict[str, Any]]], operation: dict[str, Any]
 ) -> None:
-    """Place adjacent, equivalent operations on disjoint qubits in one step."""
+    """Place equivalent operations together when neither gates nor wires overlap."""
     occupied_qubits = {
         int(index)
         for key in ("targets", "controls")
@@ -1094,10 +1094,39 @@ def _append_operation_to_parallel_step(
             and len(operation.get("controls", ()))
             == len(current_operation.get("controls", ()))
         )
-        if same_gate_shape and occupied_qubits.isdisjoint(current_step_qubits):
+        connection_overlaps = any(
+            _operation_spans_overlap(operation, step_operation)
+            for step_operation in steps[-1]
+        )
+        if (
+            same_gate_shape
+            and occupied_qubits.isdisjoint(current_step_qubits)
+            and not connection_overlaps
+        ):
             steps[-1].append(operation)
             return
     steps.append([operation])
+
+
+def _operation_spans_overlap(
+    first: dict[str, Any], second: dict[str, Any]
+) -> bool:
+    """Return whether two operations occupy overlapping vertical wire spans."""
+    first_qubits = [
+        int(index)
+        for key in ("targets", "controls", "antiControls")
+        for index in first.get(key, ())
+    ]
+    second_qubits = [
+        int(index)
+        for key in ("targets", "controls", "antiControls")
+        for index in second.get(key, ())
+    ]
+    if not first_qubits or not second_qubits:
+        return False
+    return max(min(first_qubits), min(second_qubits)) <= min(
+        max(first_qubits), max(second_qubits)
+    )
 
 
 def _remember_circuit_step_layout(

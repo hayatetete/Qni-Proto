@@ -464,6 +464,72 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     );
   });
 
+  test("shows a 32-qubit circuit without starting a state-vector simulation", async ({
+    page,
+  }) => {
+    const simulatedQubitCounts: string[] = [];
+    await page.route("**/backend.json", (route) => {
+      simulatedQubitCounts.push(
+        new URLSearchParams(route.request().postData() ?? "").get("qubitCount") ??
+          "",
+      );
+      return route.abort();
+    });
+    const circuitOnlyState = {
+      steps: [[{ type: "H", targets: [31] }]],
+      qubit_count: 32,
+      view: "circuit",
+      editable: false,
+    };
+
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(circuitOnlyState))}`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+
+    expect(
+      await page.evaluate(
+        () => window.pixiApp?.circuit.highestOccupiedQubitNumber,
+      ),
+    ).toBe(32);
+    expect(simulatedQubitCounts).not.toContain("32");
+  });
+
+  test("shows a memory error instead of crashing on an oversized state vector", async ({
+    page,
+  }) => {
+    let simulationRequest: URLSearchParams | undefined;
+    await page.route("**/backend.json", (route) => {
+      const request = new URLSearchParams(route.request().postData() ?? "");
+      if (request.get("qubitCount") === "32") simulationRequest = request;
+      return route.fulfill({
+        status: 507,
+        json: {
+          error:
+            "Insufficient memory for state-vector simulation: estimated 640.0 GiB required, 8.0 GiB available. Reduce the qubit count or circuit steps, use a machine with more RAM, or rebuild with VITE_USE_GPU=true and run with a CUDA-enabled Qiskit Aer GPU that has enough VRAM. GPU execution does not reduce the state-vector memory requirement.",
+        },
+      });
+    });
+    const state = {
+      steps: [[{ type: "H", targets: [31] }]],
+      qubit_count: 32,
+      view: "notebook",
+      editable: false,
+    };
+
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`,
+    );
+
+    await expect.poll(() => simulationRequest?.get("qubitCount")).toBe("32");
+    expect(simulationRequest?.get("includeAllAmplitudes")).toBe("false");
+    await expect(page.getByRole("alert")).toContainText("Insufficient memory");
+    await expect(page.getByRole("alert")).toContainText("640.0 GiB required");
+    await expect(page.getByRole("alert")).toContainText("VITE_USE_GPU=true");
+  });
+
   test("shows final measurement bits in the circuit-only view", async ({
     page,
   }) => {

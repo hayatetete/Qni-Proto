@@ -1,5 +1,9 @@
-import { Simulator } from "@qni/simulator";
-import { BACKEND_URL, MAX_QUBIT_COUNT, MAX_SIMULATION_PAYLOAD_BYTES } from "./constants";
+import {
+  BACKEND_URL,
+  MAX_ALL_STEP_AMPLITUDE_QUBITS,
+  MAX_QUBIT_COUNT,
+  MAX_SIMULATION_PAYLOAD_BYTES,
+} from "./constants";
 const useGpu = import.meta.env.VITE_USE_GPU === "true";
 const circuitResultCache = new Map();
 const circuitRequestsInFlight = new Map();
@@ -29,21 +33,10 @@ self.addEventListener("message", (event) => {
     requestType,
   });
   if (qubitCount < 1 || qubitCount > MAX_QUBIT_COUNT) {
-    self.postMessage({ type: "error", requestId, message: `This demo supports 1-${MAX_QUBIT_COUNT} qubits.` });
+    self.postMessage({ type: "error", requestId, message: `QniNotebook supports 1-${MAX_QUBIT_COUNT} qubits.` });
     self.postMessage({ type: "finish", requestId });
     return;
   }
-  const simulator = new Simulator("0".repeat(qubitCount));
-  const vector = simulator.state.matrix.clone();
-  const amplitudes = [];
-
-  for (let i = 0; i < vector.height; i++) {
-    const c = vector.element(0, i);
-    if (c.isOk()) {
-      amplitudes.push([c.value.real, c.value.imag]);
-    }
-  }
-
   async function call_backend() {
     try {
       const cachedResults = circuitResultCache.get(cacheKey);
@@ -62,7 +55,9 @@ self.addEventListener("message", (event) => {
         useGpu: useGpu,
         requestType: requestType,
         simulationSeed: simulationSeed,
-        includeAllAmplitudes: "true",
+        includeAllAmplitudes: String(
+          qubitCount <= MAX_ALL_STEP_AMPLITUDE_QUBITS,
+        ),
       });
       if (new TextEncoder().encode(params.toString()).byteLength > MAX_SIMULATION_PAYLOAD_BYTES) {
         throw new Error("Circuit payload exceeds the 256 KiB demo limit.");
