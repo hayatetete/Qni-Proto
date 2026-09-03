@@ -13,6 +13,7 @@ describe("CircuitStepMarkerManager", () => {
         isActive: vi.fn(),
         isHovered: vi.fn(),
         activate: vi.fn(),
+        setHovered: vi.fn(),
       },
       {
         width: 100,
@@ -20,6 +21,7 @@ describe("CircuitStepMarkerManager", () => {
         isActive: vi.fn(),
         isHovered: vi.fn(),
         activate: vi.fn(),
+        setHovered: vi.fn(),
       },
     ];
   });
@@ -49,5 +51,21 @@ describe("CircuitStepMarkerManager", () => {
       (mockSteps[1] as { activate: ReturnType<typeof vi.fn> }).activate,
     ).not.toHaveBeenCalled();
     expect(stopPropagation).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the step preview active over an interactive marker", () => {
+    const manager = new CircuitStepMarkerManager({
+      steps: mockSteps as CircuitStep[],
+    });
+
+    manager["markers"][1].emit("pointerover");
+    manager["markers"][1].emit("pointerout");
+
+    expect(
+      (mockSteps[1] as { setHovered: ReturnType<typeof vi.fn> }).setHovered,
+    ).toHaveBeenNthCalledWith(1, true);
+    expect(
+      (mockSteps[1] as { setHovered: ReturnType<typeof vi.fn> }).setHovered,
+    ).toHaveBeenNthCalledWith(2, false);
   });
 });

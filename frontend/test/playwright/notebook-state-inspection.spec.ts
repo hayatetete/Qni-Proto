@@ -62,15 +62,90 @@ test.describe("QniNotebook intermediate-state inspection", () => {
 
     const slider = page.getByRole("slider", { name: "Circuit step" });
     const number = page.getByRole("spinbutton", { name: "Step number" });
+    const sliderContainer = page.locator("#step-slider-container");
     await expect(slider).toBeVisible();
-    await slider.focus();
+
+    const circuitStepPoint = await page.evaluate(() => {
+      const app = window.pixiApp!;
+      const bounds = app.circuit.fetchStep(2).getBounds();
+      const canvasBounds = app.app.canvas.getBoundingClientRect();
+      return {
+        x:
+          canvasBounds.left +
+          ((bounds.x + bounds.width / 2) / app.app.screen.width) *
+            canvasBounds.width,
+        y:
+          canvasBounds.top +
+          ((bounds.y + bounds.height / 2) / app.app.screen.height) *
+            canvasBounds.height,
+      };
+    });
+    await page.mouse.move(circuitStepPoint.x, circuitStepPoint.y);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.pixiApp?.circuit.fetchStep(2).isHovered),
+      )
+      .toBe(true);
+    await expect(page.locator("#step-slider-hover")).toHaveAttribute(
+      "data-step",
+      "2",
+    );
+
+    const sliderContainerBox = await sliderContainer.boundingBox();
+    if (!sliderContainerBox) throw new Error("Slider container is not visible");
+    await page.mouse.click(
+      sliderContainerBox.x + 80,
+      sliderContainerBox.y + 8,
+    );
+    await expect(slider).toBeFocused();
+    await expect
+      .poll(() =>
+        page.locator("#step-slider-container").evaluate(
+          (element) => getComputedStyle(element).borderColor,
+        ),
+      )
+      .toBe("rgb(0, 0, 0)");
     await page.keyboard.press("ArrowRight");
     await expect(number).toHaveValue("1");
     await expect
       .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
       .toBe(1);
 
+    const sliderBox = await slider.boundingBox();
+    if (!sliderBox) throw new Error("Slider is not visible");
+    await page.mouse.move(
+      sliderBox.x + sliderBox.width * 0.7,
+      sliderBox.y + sliderBox.height / 2,
+    );
+    const hoverMarker = page.locator("#step-slider-hover");
+    await expect(hoverMarker).toBeVisible();
+    await expect
+      .poll(() =>
+        hoverMarker.evaluate((element) => getComputedStyle(element).borderRadius),
+      )
+      .toBe("0px");
+    const previewStep = Number(await hoverMarker.getAttribute("data-step"));
+    expect(previewStep).not.toBe(1);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (index) => window.pixiApp?.circuit.fetchStep(index).isHovered,
+          previewStep,
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
+      .toBe(1);
+
     await number.fill("3");
+    await expect
+      .poll(() =>
+        page.locator("#step-slider-container").evaluate(
+          (element) => getComputedStyle(element).borderColor,
+        ),
+      )
+      .toBe("rgb(0, 0, 0)");
     await page.keyboard.press("Enter");
     await expect(slider).toHaveValue("3");
     await expect
@@ -168,7 +243,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     );
     expect(sliderMetrics.thumbWidth).toBeGreaterThan(sliderMetrics.widestTick);
     expect(sliderMetrics.tickHeight).toBeCloseTo(17, 0);
-    expect(sliderMetrics.tickColor).toBe("rgb(196, 196, 196)");
+    expect(sliderMetrics.tickColor).toBe("rgb(14, 165, 233)");
     expect(sliderMetrics.trackLeft).toBeCloseTo(sliderMetrics.firstTickCenter, 1);
     expect(sliderMetrics.trackRight).toBeCloseTo(sliderMetrics.lastTickCenter, 1);
     expect(sliderMetrics.numberToThumbGap).toBeCloseTo(6, 0);
@@ -198,6 +273,13 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       resizeHandle.y + resizeHandle.height / 2,
       1,
     );
+    const stacking = await page.evaluate(() => ({
+      number: Number(getComputedStyle(document.getElementById("step-number")!).zIndex),
+      resizeHandle: Number(
+        getComputedStyle(document.getElementById("step-slider-resize-handle")!).zIndex,
+      ),
+    }));
+    expect(stacking.number).toBeGreaterThan(stacking.resizeHandle);
     await page.mouse.move(
       resizeHandle.x + resizeHandle.width / 2,
       resizeHandle.y + resizeHandle.height / 2,

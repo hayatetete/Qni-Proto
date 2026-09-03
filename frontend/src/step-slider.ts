@@ -56,6 +56,7 @@ export class StepSlider {
   private readonly slider: HTMLInputElement;
   private readonly number: HTMLInputElement;
   private readonly ticks: HTMLDivElement;
+  private readonly hoverMarker: HTMLDivElement;
   private readonly labels: HTMLDivElement;
   private readonly resizeHandle: HTMLDivElement;
   private pendingStepIndex: number;
@@ -67,9 +68,10 @@ export class StepSlider {
     this.container.innerHTML = `
       <div id="step-slider-track"></div>
       <div id="step-slider-ticks"></div>
+      <div id="step-slider-hover" aria-hidden="true" hidden></div>
       <div id="step-slider-labels"></div>
       <input id="step-number" type="number" min="0" value="0" aria-label="Step number" />
-      <input id="step-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Circuit step" />
+      <input id="step-slider" type="range" min="0" max="0" step="1" value="0" aria-label="Circuit step" aria-keyshortcuts="ArrowLeft ArrowRight" />
       <div
         id="step-slider-resize-handle"
         role="separator"
@@ -85,6 +87,7 @@ export class StepSlider {
     this.slider = this.requiredElement("step-slider", HTMLInputElement);
     this.number = this.requiredElement("step-number", HTMLInputElement);
     this.ticks = this.requiredElement("step-slider-ticks", HTMLDivElement);
+    this.hoverMarker = this.requiredElement("step-slider-hover", HTMLDivElement);
     this.labels = this.requiredElement("step-slider-labels", HTMLDivElement);
     this.resizeHandle = this.requiredElement(
       "step-slider-resize-handle",
@@ -128,6 +131,10 @@ export class StepSlider {
       "--step-progress",
       maximum === 0 ? "0" : String(clamped / maximum),
     );
+    for (const tick of this.ticks.children) {
+      if (!(tick instanceof HTMLElement)) continue;
+      tick.dataset.active = String(Number(tick.dataset.value) === clamped);
+    }
   }
 
   private selectStep(stepIndex: number): void {
@@ -140,6 +147,34 @@ export class StepSlider {
       this.app.circuit.fetchStep(selected).activate();
       this.app.circuitFrame.scrollStepIntoView(selected);
     });
+  }
+
+  private renderHoveredStep(stepIndex: number | null): void {
+    const activeStepIndex = this.app.circuit.activeStepIndex ?? 0;
+    if (stepIndex === null || stepIndex === activeStepIndex) {
+      this.hoverMarker.hidden = true;
+      return;
+    }
+    const maximum = Math.max(0, this.app.circuit.steps.length - 1);
+    this.container.style.setProperty(
+      "--step-hover-progress",
+      maximum === 0 ? "0" : String(stepIndex / maximum),
+    );
+    this.hoverMarker.dataset.step = String(stepIndex);
+    this.hoverMarker.hidden = false;
+  }
+
+  private previewStep(stepIndex: number | null): void {
+    this.app.circuit.steps.forEach((step, index) => {
+      if (index !== stepIndex) step.setHovered(false);
+    });
+    if (stepIndex === null) {
+      this.renderHoveredStep(null);
+      return;
+    }
+    this.app.circuit
+      .fetchStep(this.clampStepIndex(stepIndex))
+      .setHovered(true);
   }
 
   private renderScale = (): void => {
@@ -158,6 +193,7 @@ export class StepSlider {
       tick.dataset.value = String(value);
       tick.style.left = `${position}%`;
       tick.style.width = `${scale.width}px`;
+      tick.dataset.active = String(value === (this.app.circuit.activeStepIndex ?? 0));
       this.ticks.append(tick);
       if (scale.representative) {
         const label = document.createElement("span");
@@ -170,6 +206,22 @@ export class StepSlider {
   };
 
   private setupSelection(): void {
+    this.container.addEventListener("pointerdown", (event) => {
+      if (event.target === this.number) return;
+      this.slider.focus({ preventScroll: true });
+    });
+    this.slider.addEventListener("pointermove", (event) => {
+      const rect = this.slider.getBoundingClientRect();
+      const halfThumb = 3.5;
+      const usableWidth = Math.max(1, rect.width - 2 * halfThumb);
+      const progress = Math.min(
+        1,
+        Math.max(0, (event.clientX - rect.left - halfThumb) / usableWidth),
+      );
+      const maximum = Math.max(0, this.app.circuit.steps.length - 1);
+      this.previewStep(Math.round(progress * maximum));
+    });
+    this.slider.addEventListener("pointerleave", () => this.previewStep(null));
     this.slider.addEventListener("input", () =>
       this.selectStep(Number(this.slider.value)),
     );
@@ -202,6 +254,11 @@ export class StepSlider {
     });
     this.app.circuit.on(CIRCUIT_STEP_EVENTS.ACTIVATED, () => {
       this.renderValue(this.app.circuit.activeStepIndex ?? 0);
+      this.renderHoveredStep(null);
+    });
+    this.app.circuit.on(CIRCUIT_STEP_EVENTS.HOVERED, (step) => {
+      const index = this.app.circuit.steps.indexOf(step);
+      this.renderHoveredStep(step.isHovered && index >= 0 ? index : null);
     });
     this.app.circuit.on(CIRCUIT_EVENTS.STEPS_CHANGED, this.renderScale);
   }
@@ -238,6 +295,7 @@ export class StepSlider {
         !(target instanceof Element) ||
         target === this.slider ||
         target === this.number ||
+        target.closest("#step-slider-ticks") ||
         target.closest("#step-slider-resize-handle")
       ) {
         return;

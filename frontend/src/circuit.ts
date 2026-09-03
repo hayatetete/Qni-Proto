@@ -322,8 +322,9 @@ export class Circuit extends Container {
     this.updateConnections();
   }
 
-  private updateStepMarker() {
+  private updateStepMarker(circuitStep: CircuitStep) {
     this.markerManager.update(this.steps);
+    this.emit(CIRCUIT_STEP_EVENTS.HOVERED, circuitStep);
   }
 
   /**

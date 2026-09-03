@@ -203,11 +203,20 @@ describe("CircuitStep", () => {
   });
 
   describe("setPresentationMode", () => {
-    it("keeps step selection enabled while disabling gate editing", () => {
+    it("keeps the original whole-step hit area while disabling gate editing", () => {
       circuitStep.setPresentationMode(true);
 
       expect(circuitStep.eventMode).toBe("static");
       expect(circuitStep.interactiveChildren).toBe(false);
+      expect(circuitStep.hitArea).toMatchObject({
+        x: 0,
+        y: 0,
+        width: circuitStep.width,
+        height: circuitStep.height,
+      });
+
+      circuitStep.setPresentationMode(false);
+      expect(circuitStep.hitArea).toBeNull();
     });
   });
 
