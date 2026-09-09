@@ -11,3 +11,8 @@ frontend/dist
 frontend/playwright-report
 frontend/test-results
 doc
+!doc/
+doc/*
+!doc/screenshot/
+!doc/screenshot/**
+copilot-loop-local

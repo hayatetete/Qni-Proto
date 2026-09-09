@@ -5,6 +5,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     QNI_PUBLIC_HOST=127.0.0.1 \
     QNI_FRONTEND_PORT=5173 \
     QNI_BACKEND_PORT=8000 \
+    QNI_JUPYTER_PORT=8888 \
+    VITE_USE_GPU=false \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=5 \
     PATH=/opt/qni-venv/bin:$PATH \
     PIP_CERT=/etc/ssl/certs/ca-certificates.crt \
     NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
@@ -18,13 +22,15 @@ WORKDIR /workspace/qni
 COPY . .
 
 RUN if [ -f cert_Authentication_Cookie_CA.crt ]; then \
-        install -m 0644 cert_Authentication_Cookie_CA.crt /usr/local/share/ca-certificates/qni-local-ca.crt; \
-        update-ca-certificates; \
+    install -m 0644 cert_Authentication_Cookie_CA.crt /usr/local/share/ca-certificates/qni-local-ca.crt; \
+    update-ca-certificates; \
     fi \
     && rm -f cert_Authentication_Cookie_CA.crt \
     && python -m pip install --no-cache-dir -e . -e ./backend jupyterlab \
     && cd frontend \
-    && node .yarn/releases/yarn-4.4.1.cjs install --immutable
+    && corepack enable \
+    && corepack prepare yarn@4.4.1 --activate \
+    && yarn install --immutable
 
 EXPOSE 5173 8000 8888
 
