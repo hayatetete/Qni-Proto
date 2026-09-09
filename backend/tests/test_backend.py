@@ -15,34 +15,34 @@ def test_post_empty_circuit():
     assert "qubitCount" in res["error"]
 
 
-def test_accepts_circuit_up_to_32_qubits_when_memory_is_available():
+def test_accepts_circuit_up_to_8_qubits_when_memory_is_available():
     with (
         patch("qni.backend._available_memory_bytes", return_value=2 * 1024**4),
         patch("qni.backend.cached_qiskit_runner.run", return_value=[]),
     ):
         response = app.test_client().post(
             "/backend.json",
-            data={"qubitCount": 32, "untilStepIndex": 0, "steps": "[[]]"},
+            data={"qubitCount": 8, "untilStepIndex": 0, "steps": "[[]]"},
         )
 
     assert response.status_code == 200
 
 
-def test_rejects_circuit_above_32_qubits():
+def test_rejects_circuit_above_8_qubits():
     response = app.test_client().post(
         "/backend.json",
-        data={"qubitCount": 33, "untilStepIndex": 0, "steps": "[[]]"},
+        data={"qubitCount": 9, "untilStepIndex": 0, "steps": "[[]]"},
     )
 
     assert response.status_code == 400
-    assert "between 1 and 32" in response.get_json()["error"]
+    assert "between 1 and 8" in response.get_json()["error"]
 
 
 def test_rejects_simulation_that_will_not_fit_in_available_memory():
-    with patch("qni.backend._available_memory_bytes", return_value=8 * 1024**3):
+    with patch("qni.backend._available_memory_bytes", return_value=1024):
         response = app.test_client().post(
             "/backend.json",
-            data={"qubitCount": 32, "untilStepIndex": 0, "steps": "[[]]"},
+            data={"qubitCount": 8, "untilStepIndex": 0, "steps": "[[]]"},
         )
 
     assert response.status_code == 507
@@ -54,11 +54,11 @@ def test_rejects_simulation_that_will_not_fit_in_available_memory():
 
 
 def test_gpu_memory_error_does_not_suggest_enabling_gpu_again():
-    with patch("qni.backend._available_memory_bytes", return_value=8 * 1024**3):
+    with patch("qni.backend._available_memory_bytes", return_value=1024):
         response = app.test_client().post(
             "/backend.json",
             data={
-                "qubitCount": 32,
+                "qubitCount": 8,
                 "untilStepIndex": 0,
                 "steps": "[[]]",
                 "useGpu": "true",
@@ -199,3 +199,27 @@ def test_editor_draft_round_trip():
     assert saved.status_code == 200
     assert loaded.status_code == 200
     assert loaded.get_json() == payload
+
+
+def test_editor_draft_rejects_more_than_8_qubits():
+    response = app.test_client().put(
+        "/editor-drafts/session-too-large",
+        json={"steps": [[]], "qubit_count": 9, "code": "", "warnings": []},
+    )
+
+    assert response.status_code == 400
+    assert "session-too-large" not in editor_drafts
+
+
+def test_export_rejects_more_than_8_qubits():
+    response = app.test_client().post(
+        "/backend.json",
+        data={
+            "requestType": "export",
+            "qubitCount": 9,
+            "steps": '[[{"type":"H","targets":[0]}]]',
+        },
+    )
+
+    assert response.status_code == 400
+    assert "between 1 and 8" in response.get_json()["error"]

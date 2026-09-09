@@ -36,7 +36,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 256 * 1024
 CORS(app)
 
-MAX_QUBITS = 32
+MAX_QUBITS = 8
 STATEVECTOR_BYTES_PER_AMPLITUDE = 16
 MEMORY_SAFETY_FRACTION = 0.6
 BYTES_PER_KIBIBYTE = 1024
@@ -70,7 +70,9 @@ def editor_draft(draft_id: str) -> tuple[Response, int]:
     qubit_count = payload.get("qubit_count")
     code = payload.get("code")
     warnings = payload.get("warnings", [])
-    valid_qubit_count = isinstance(qubit_count, int) and qubit_count >= 1
+    valid_qubit_count = (
+        isinstance(qubit_count, int) and 1 <= qubit_count <= MAX_QUBITS
+    )
     valid_warnings = isinstance(warnings, list) and all(
         isinstance(warning, str) for warning in warnings
     )
@@ -303,7 +305,10 @@ class InvalidQubitCountError(ValueError):
             qubit_count (int): The invalid qubit count that caused the error.
 
         """
-        super().__init__(f"Qubit count must be greater than 0 (got {qubit_count})")
+        super().__init__(
+            f"Qubit count must be between 1 and {MAX_QUBITS} "
+            f"(got {qubit_count})"
+        )
 
 
 def handle_export_request() -> tuple[Response, int]:
@@ -340,7 +345,7 @@ def _parse_and_validate_export_parameters() -> tuple[list, int]:
 
     if not steps:
         raise EmptyStepsError(steps)
-    if qubit_count <= 0:
+    if qubit_count < 1 or qubit_count > MAX_QUBITS:
         raise InvalidQubitCountError(qubit_count)
 
     return steps, qubit_count
