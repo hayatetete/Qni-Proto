@@ -32,6 +32,7 @@ import { setupAlgorithms, AlgorithmKey } from "./algorithms";
 import { setupQuriCodeExportDialog } from "./quri-code-export-dialog";
 import { QubitCount } from "./types";
 import SimulatorWorker from "./service-worker.js?worker";
+import { mountStateVectorTooltip } from "./state-vector-tooltip";
 
 declare global {
   interface Window {
@@ -79,6 +80,10 @@ export class App {
   private jupyterViewMode: JupyterViewMode = "notebook";
   private jupyterReadOnly = false;
   private simulationRequestId = 0;
+  private simulationBackendUrl: string | undefined;
+  // The Jupyter entry receives its real circuit asynchronously from the URL
+  // bridge; do not simulate the one-qubit placeholder during app bootstrap.
+  private simulationSuspended = this.isJupyterEntry;
   private simulationSeed = crypto.getRandomValues(new Uint32Array(1))[0];
   private readonly viewerMeasurementResults = new Map<string, 0 | 1>();
   private jupyterZoom = 1;
@@ -140,6 +145,10 @@ export class App {
 
   setSimulationSeed(seed: number): void {
     this.simulationSeed = seed >>> 0;
+  }
+
+  setSimulationBackendUrl(url: string): void {
+    this.simulationBackendUrl = url;
   }
 
   constructor(elementId: string) {
@@ -205,6 +214,7 @@ export class App {
       this.setupClearCircuitButton();
 
       this.setupJupyterZoom();
+      if (this.isJupyterEntry) mountStateVectorTooltip();
 
       // テスト用
       window.pixiApp = this;
@@ -223,8 +233,13 @@ export class App {
     focusActiveStep?: boolean;
     editable?: boolean;
   }): void {
+    this.simulationSuspended = true;
     this.jupyterReadOnly = circuitJson.editable === false;
-    this.circuit.fromJSON(JSON.stringify({ cols: circuitJson.cols }));
+    try {
+      this.circuit.fromJSON(
+        JSON.stringify({ cols: circuitJson.cols }),
+        this.jupyterReadOnly && this.jupyterViewMode !== "circuit",
+      );
     const activeStepIndex = Math.min(
       Math.max(0, circuitJson.activeStepIndex ?? 0),
       Math.max(0, this.circuit.steps.length - 1),
@@ -257,7 +272,27 @@ export class App {
     if (circuitJson.focusActiveStep) {
       this.circuitFrame.animateStepIntoView(activeStepIndex);
     }
-    this.runSimulator();
+    } finally {
+      // Pixi emits viewport changes on the next frame. Keep simulation paused
+      // until those initialization-only events have settled, then run once.
+      // Browsers may suspend requestAnimationFrame for off-screen notebook
+      // iframes, so a timer must also be able to finish initialization.
+      this.setAppStateToRunning();
+      let initializationFinished = false;
+      const finishInitialization = () => {
+        if (initializationFinished) return;
+        initializationFinished = true;
+        if (circuitJson.qubitCount !== undefined) {
+          this.stateVector.qubitCount = circuitJson.qubitCount as QubitCount;
+        }
+        this.simulationSuspended = false;
+        this.runSimulator();
+      };
+      window.setTimeout(finishInitialization, 250);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(finishInitialization);
+      });
+    }
     this.scheduleJupyterViewerResize();
   }
 
@@ -903,6 +938,14 @@ export class App {
       this.scheduleJupyterViewerResize();
       return;
     }
+    if (event.data.type === "inspection-results") {
+      window.dispatchEvent(
+        new CustomEvent("qni-inspection-results", {
+          detail: { results: event.data.results },
+        }),
+      );
+      return;
+    }
     if (!this.stateVector) {
       return;
     }
@@ -1436,6 +1479,9 @@ export class App {
   }
 
   protected runSimulator() {
+    if (this.simulationSuspended) {
+      return;
+    }
     if (
       this.jupyterViewMode === "circuit" &&
       !this.circuit.steps.some((step) =>
@@ -1475,6 +1521,7 @@ export class App {
     this.worker.postMessage({
       requestId: this.simulationRequestId,
       simulationSeed: this.simulationSeed,
+      backendUrl: this.simulationBackendUrl,
       circuitJson: this.circuit.toJSON(),
       qubitCount: this.stateVector.qubitCount,
       untilStepIndex: this.circuit.activeStepIndex,
@@ -1843,15 +1890,9 @@ export class App {
     this.circuit.fromJSON(JSON.stringify({ cols: circuitData.cols }));
   }
 
-  /**
-   * Notebook iframeでは高DPI canvasが操作遅延に直結するため、Jupyter入口だけ1xで描画する。
-   */
+  /** Keep vectors and gate outlines crisp on high-DPI displays without unbounded GPU cost. */
   private renderResolution(): number {
-    if (this.isJupyterEntry) {
-      return 1;
-    }
-
-    return window.devicePixelRatio;
+    return Math.min(window.devicePixelRatio || 1, 2);
   }
 
   /**

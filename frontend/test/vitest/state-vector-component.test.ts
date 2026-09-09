@@ -90,7 +90,7 @@ describe("StateVectorComponent", () => {
     );
   });
 
-  it("should draw fewer representative circles when zoomed far out", () => {
+  it("should keep one circle per basis state when zoomed far out", () => {
     const zoomedOutStateVector = new StateVectorComponent({
       initialQubitCount: 8,
       viewport: new Rectangle(0, 0, 2000, 2000),
@@ -100,12 +100,14 @@ describe("StateVectorComponent", () => {
       (child) => child instanceof QubitCircle
     );
 
-    expect(renderedCircles.length).toBeLessThan(
-      zoomedOutStateVector.qubitCircleCount
-    );
+    expect(renderedCircles.length).toBe(zoomedOutStateVector.qubitCircleCount);
+    expect(zoomedOutStateVector.visibleQubitCircleIndices).toHaveLength(256);
+    for (const index of zoomedOutStateVector.visibleQubitCircleIndices) {
+      expect(zoomedOutStateVector.qubitCircleAt(index)?.eventMode).toBe("static");
+    }
   });
 
-  it("should aggregate the one-row aspect when zoomed far out", () => {
+  it("should keep one circle per visible state in the one-row aspect", () => {
     const rowStateVector = new StateVectorComponent({
       initialQubitCount: 8,
       viewport: new Rectangle(0, 0, 5000, 200),
@@ -116,7 +118,9 @@ describe("StateVectorComponent", () => {
       (child) => child instanceof QubitCircle
     );
 
-    expect(renderedCircles.length).toBeLessThan(rowStateVector.qubitCircleCount);
+    expect(renderedCircles.length).toBe(
+      rowStateVector.visibleQubitCircleIndices.length
+    );
   });
 
   it("should return a representative circle for a visible aggregated index", () => {

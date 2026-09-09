@@ -23,6 +23,7 @@ self.addEventListener("message", (event) => {
   const requestType = event.data.requestType || "circuit";
   const requestId = event.data.requestId;
   const simulationSeed = event.data.simulationSeed;
+  const backendUrl = event.data.backendUrl || BACKEND_URL;
   const selectedStep = Number(untilStepIndex);
   const cacheKey = JSON.stringify({
     steps,
@@ -31,6 +32,7 @@ self.addEventListener("message", (event) => {
     useGpu,
     simulationSeed,
     requestType,
+    backendUrl,
   });
   if (qubitCount < 1 || qubitCount > MAX_QUBIT_COUNT) {
     self.postMessage({ type: "error", requestId, message: `QniNotebook supports 1-${MAX_QUBIT_COUNT} qubits.` });
@@ -65,7 +67,7 @@ self.addEventListener("message", (event) => {
 
       let request = circuitRequestsInFlight.get(cacheKey);
       if (!request) {
-        request = fetch(BACKEND_URL, {
+        request = fetch(backendUrl, {
           method: "POST",
           signal: AbortSignal.timeout(15_000),
           headers: {
@@ -100,6 +102,11 @@ self.addEventListener("message", (event) => {
 
   function postResults(jsondata, cached) {
     if (requestType === "circuit") {
+      self.postMessage({
+        type: "inspection-results",
+        requestId,
+        results: jsondata.map((result) => ({ amplitudes: result["amplitudes"] || {} })),
+      });
       for (let i = 0; i < jsondata.length; i++) {
         const stepResult = jsondata[i];
         const hasCheckpointData =

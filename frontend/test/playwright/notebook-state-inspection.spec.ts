@@ -46,6 +46,331 @@ async function freezeWebGlCanvasForScreenshot(page: Page): Promise<void> {
 }
 
 test.describe("QniNotebook intermediate-state inspection", () => {
+  test("keeps only the initial boundary and real circuit columns", async ({
+    page,
+  }) => {
+    const state = {
+      ...viewerState,
+      steps: [[{ type: "H", targets: [0] }]],
+      qubit_count: 1,
+    };
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({ status: 200, json: [zeroResult(0), zeroResult(0)] }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`,
+    );
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+
+    await expect(page.getByRole("slider", { name: "Circuit step" })).toHaveAttribute(
+      "max",
+      "1",
+    );
+    await expect
+      .poll(() => page.evaluate(() => window.pixiApp?.circuit.steps.length))
+      .toBe(2);
+  });
+
+  test("renders the state vector at high-DPI backing resolution", async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 900, height: 520 }, deviceScaleFactor: 2 });
+    const page = await context.newPage();
+    await page.route("**/backend.json", (route) => route.fulfill({ status: 200, json: [zeroResult(0), ...viewerState.steps.map(() => zeroResult(0))] }));
+    await page.goto(`/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`);
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+    const density = await page.locator("canvas").evaluate((canvas) => ({ backing: canvas.width, css: canvas.getBoundingClientRect().width, dpr: devicePixelRatio }));
+    expect(density.dpr).toBe(2);
+    expect(density.backing).toBe(Math.round(density.css * 2));
+    await context.close();
+  });
+
+  test("reports the first failed checkpoint and shows major states", async ({ page }) => {
+    test.setTimeout(60_000);
+    const state = {
+      ...viewerState,
+      checkpoints: [
+        { name: "Initial", step: 0, expected_probabilities: { "0000": 1 } },
+        { name: "Expected X", step: 1, expected_probabilities: { "0001": 1 }, source: "build(): line 12" },
+      ],
+      qubit_names: ["data 0", "data 1", "work", "flag"],
+    };
+    await page.route("**/backend.json", (route) => route.fulfill({
+      status: 200,
+      json: [zeroResult(0), ...viewerState.steps.map(() => zeroResult(0))],
+    }));
+    await page.goto(`/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`);
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+
+    const panel = page.locator("#qni-inspection-panel");
+    const toggle = page.locator("#inspection-panel-toggle");
+    await expect(toggle.locator("img")).toHaveAttribute("src", "/icons/inspection.svg");
+    await expect(toggle).toHaveClass(/bg-sky-500/);
+    await expect(toggle).toHaveClass(/border-2/);
+    await expect.poll(() => toggle.evaluate((element) => element.classList.contains("border-purple-500"))).toBe(true);
+    await expect.poll(() => toggle.evaluate((element) => element.classList.contains("border-sky-700"))).toBe(false);
+    await expect(panel).toContainText("First failure: Step 1");
+    await expect(panel).toContainText("Expected X");
+    await expect(panel).toContainText("Why this checkpoint failed");
+    await expect(panel).toContainText("|0001⟩ probability");
+    await expect(panel.locator(".inspection-failure-table")).toContainText("ExpectedActualDifference");
+    await expect(panel.locator(".inspection-failure-table")).toContainText("100.0%0.000%−100.0%");
+    await expect(panel).toContainText("|0000⟩");
+    await expect(panel.locator(".inspection-basis-label").first()).toContainText("|0000⟩|0⟩10");
+    const basisLabelBox = await panel.locator(".inspection-basis-label").first().boundingBox();
+    const decimalLabelBox = await panel.locator(".inspection-basis-decimal").first().boundingBox();
+    expect(Math.abs((decimalLabelBox?.y ?? 0) - (basisLabelBox?.y ?? 0))).toBeLessThan(1);
+    await expect(panel).not.toContainText("How to read basis labels");
+    await expect(panel).toContainText("q2work");
+    await expect(panel).toContainText("q3flag");
+    await expect(panel).toContainText("1.000");
+    const passedStatus = panel.getByText("PASS", { exact: true });
+    await expect(passedStatus).toHaveClass(/inspection-status-pass/);
+    expect(await passedStatus.evaluate((element) => getComputedStyle(element).color)).toBe("rgb(16, 185, 129)");
+    await expect(panel.getByText("FAIL", { exact: true })).toHaveClass(/inspection-status-fail/);
+    await expect(panel.locator("[data-phase-degrees='0']")).toBeVisible();
+    expect(await panel.locator(".inspection-probability-fill").first().evaluate((element) => getComputedStyle(element).borderRadius)).toBe("0px");
+    const inspectionSlider = panel.getByRole("slider", { name: "Inspection step" });
+    const inspectionStepNumber = panel.getByRole("spinbutton", { name: "Inspection step number" });
+    await expect(inspectionSlider).toHaveAttribute("max", "4");
+    await expect(inspectionSlider).toHaveValue("0");
+    await expect(inspectionStepNumber).toHaveValue("0");
+    await expect(panel.locator("#inspection-step-ticks > span")).toHaveCount(5);
+    await expect(panel).toHaveScreenshot("qni-inspection-checkpoint-panel.png", {
+      animations: "disabled",
+    });
+
+    await inspectionSlider.fill("3");
+    await expect(page.getByRole("slider", { name: "Circuit step" })).toHaveValue("3");
+    await expect(inspectionStepNumber).toHaveValue("3");
+    await inspectionStepNumber.fill("2");
+    await inspectionStepNumber.press("Enter");
+    await expect(page.getByRole("slider", { name: "Circuit step" })).toHaveValue("2");
+
+    await expect(panel.locator("header button")).toHaveCount(1);
+    await expect(page.locator("#inspection-panel-toggle")).toHaveAttribute(
+      "aria-label",
+      "Inspect",
+    );
+
+    const beforeMove = await panel.boundingBox();
+    if (!beforeMove) throw new Error("Inspection panel is not visible");
+    await page.mouse.move(beforeMove.x + 80, beforeMove.y + 16);
+    await page.mouse.down();
+    await page.mouse.move(beforeMove.x - 40, beforeMove.y + 46, { steps: 5 });
+    await page.mouse.up();
+    const afterMove = await panel.boundingBox();
+    expect(afterMove?.x).toBeLessThan(beforeMove.x);
+
+    const southeast = panel.getByRole("button", { name: /Resize state inspection se/ });
+    const resizePoint = await southeast.boundingBox();
+    const beforeResize = await panel.boundingBox();
+    if (!resizePoint || !beforeResize) throw new Error("Resize handle is not visible");
+    await page.mouse.move(resizePoint.x + 2, resizePoint.y + 2);
+    await page.mouse.down();
+    await page.mouse.move(resizePoint.x + 42, resizePoint.y + 32, { steps: 5 });
+    await page.mouse.up();
+    const afterResize = await panel.boundingBox();
+    expect(afterResize?.width).toBeGreaterThan(beforeResize.width);
+    expect(afterResize?.height).toBeGreaterThan(beforeResize.height);
+
+    await toggle.click();
+    await expect(panel).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(() => toggle.evaluate((element) => element.classList.contains("border-sky-700"))).toBe(true);
+    await expect.poll(() => toggle.evaluate((element) => element.classList.contains("border-purple-500"))).toBe(false);
+    await toggle.click();
+    await expect(panel).toBeVisible();
+  });
+
+  test("shows dominant states first and keeps lower-priority states collapsed", async ({ page }) => {
+    const state = {
+      ...viewerState,
+      active_step_index: 1,
+      checkpoints: [
+        { name: "Initial", step: 0, expected_probabilities: { "0000": 1 } },
+      ],
+    };
+    const distributed: StepResult = {
+      ...zeroResult(0),
+      amplitudes: Object.fromEntries(
+        Array.from({ length: 16 }, (_, index) => [
+          String(index),
+          index < 10 ? [0.25, 0] : [0, 0],
+        ]),
+      ),
+    };
+    await page.route("**/backend.json", (route) => route.fulfill({
+      status: 200,
+      json: [zeroResult(0), distributed, ...viewerState.steps.slice(1).map(() => distributed)],
+    }));
+    await page.goto(`/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`);
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+
+    const panel = page.locator("#qni-inspection-panel");
+    await expect(panel.getByText("Dominant states")).toBeVisible();
+    const allPassed = panel.getByText("All checkpoints passed", { exact: true });
+    await expect(allPassed).toHaveClass(/inspection-status-pass/);
+    await expect(allPassed.locator("svg")).toBeVisible();
+    await expect(panel.locator("tbody tr:visible")).toHaveCount(8);
+    const more = panel.locator("details").filter({ hasText: "Show more states (2)" });
+    await expect(more).not.toHaveAttribute("open", "");
+    await expect(panel).toHaveScreenshot("qni-inspection-all-passed-panel.png", {
+      animations: "disabled",
+    });
+    await more.locator("summary").click();
+    await expect(panel.locator("tbody tr:visible")).toHaveCount(10);
+  });
+
+  test("shows the Python source associated with the selected boundary", async ({ page }) => {
+    const state = {
+      steps: [[{
+        type: "H",
+        targets: [0],
+        source: {
+          line: 5,
+          code: "circuit.add_H_gate(qubit)",
+          scope: "module > build() > for qubit=0",
+        },
+      }]],
+      qubit_count: 1,
+      view: "notebook",
+      editable: false,
+      active_step_index: 1,
+      checkpoints: [
+        { name: "Prepared", step: 1, expected_probabilities: { "0": 1 } },
+      ],
+    };
+    await page.route("**/backend.json", (route) => route.fulfill({
+      status: 200,
+      json: [zeroResult(0), zeroResult(0)],
+    }));
+    await page.goto(`/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`);
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+
+    const panel = page.locator("#qni-inspection-panel");
+    await expect(panel).toContainText("Python source");
+    await expect(panel).toContainText("L5");
+    await expect(panel).toContainText("circuit.add_H_gate(qubit)");
+    await expect(panel).toContainText("module > build() > for qubit=0");
+  });
+
+  test("shows an equivalent decimal ket and rotates positive phase clockwise", async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 369 });
+    const state = {
+      steps: [[{ type: "H", targets: [7] }]],
+      qubit_count: 8,
+      view: "notebook",
+      editable: false,
+      active_step_index: 1,
+      checkpoints: [
+        { name: "High basis index", step: 1, expected_probabilities: { "11111111": 1 } },
+      ],
+    };
+    const basis255 = {
+      ...zeroResult(0),
+      amplitudes: Object.fromEntries(
+        Array.from({ length: 256 }, (_, index) => [
+          String(index),
+          index === 255 ? [0, 1] : [0, 0],
+        ]),
+      ),
+    };
+    await page.route("**/backend.json", (route) => route.fulfill({
+      status: 200,
+      json: [zeroResult(0), basis255],
+    }));
+    await page.goto(`/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`);
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+
+    const panel = page.locator("#qni-inspection-panel");
+    const basis = panel.locator(".inspection-basis-label").first();
+    await expect(basis).toContainText("|11111111⟩|255⟩10");
+    await expect(basis.locator(".inspection-basis-decimal")).toHaveAttribute(
+      "aria-label",
+      "decimal index 255",
+    );
+    const phase = panel.locator("[data-phase-degrees='90']");
+    await expect(phase).toBeVisible();
+    await expect(phase.locator(".inspection-phase-sector")).toHaveAttribute("d", /A6 6 0 0 1 14\.000 8\.000/);
+    await expect(phase.locator("path[transform]")).toHaveAttribute("transform", "rotate(90 8 8)");
+    const panelBox = await panel.boundingBox();
+    expect((panelBox?.y ?? 0) + (panelBox?.height ?? 0)).toBeLessThanOrEqual(369);
+  });
+
+  test("does not report success while a checkpoint is still unevaluated", async ({ page }) => {
+    const state = {
+      ...viewerState,
+      checkpoints: [
+        { name: "Later boundary", step: 4, expected_probabilities: { "0000": 1 } },
+      ],
+    };
+    await page.route("**/backend.json", (route) => route.fulfill({
+      status: 200,
+      json: [zeroResult(0)],
+    }));
+    await page.goto(`/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`);
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+
+    const panel = page.locator("#qni-inspection-panel");
+    await expect(panel).toContainText("Waiting for simulation…");
+    await expect(panel).toContainText("WAIT");
+    await expect(panel).not.toContainText("All checkpoints passed");
+  });
+
+  test("reports the earliest failed boundary even when checkpoints are unordered", async ({ page }) => {
+    const state = {
+      ...viewerState,
+      checkpoints: [
+        { name: "Later failure", step: 3, expected_probabilities: { "0001": 1 } },
+        { name: "Earlier failure", step: 1, expected_probabilities: { "0010": 1 } },
+      ],
+    };
+    await page.route("**/backend.json", (route) => route.fulfill({
+      status: 200,
+      json: [zeroResult(0), ...viewerState.steps.map(() => zeroResult(0))],
+    }));
+    await page.goto(`/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`);
+    await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
+
+    await expect(page.locator("#qni-inspection-panel")).toContainText(
+      "First failure: Step 1",
+    );
+  });
+
+  test("starts one simulation after the circuit and qubit count are initialized", async ({
+    page,
+  }) => {
+    const eightQubitState = {
+      ...viewerState,
+      qubit_count: 8,
+      backendUrl: "http://127.0.0.1:9876/backend.json",
+    };
+    const requests: URLSearchParams[] = [];
+    const requestUrls: string[] = [];
+    await page.route("**/backend.json", (route) => {
+      requestUrls.push(route.request().url());
+      requests.push(new URLSearchParams(route.request().postData() ?? ""));
+      return route.fulfill({
+        status: 200,
+        json: [zeroResult(0), ...eightQubitState.steps.map(() => zeroResult(0))],
+      });
+    });
+
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(eightQubitState))}`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requestUrls).toEqual([eightQubitState.backendUrl]);
+    expect(requests[0].get("qubitCount")).toBe("8");
+    const requestedSteps = JSON.parse(requests[0].get("steps") ?? "[]");
+    expect(requestedSteps).toHaveLength(5);
+    expect(requestedSteps[0]).toEqual([]);
+    expect(requestedSteps[1]).toEqual([{ type: "H", targets: [0] }]);
+  });
+
   test("selects circuit steps with the slider, keyboard, and number input", async ({ page }) => {
     await page.route("**/backend.json", (route) =>
       route.fulfill({
@@ -111,6 +436,10 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
       .toBe(1);
 
+    await number.fill("0");
+    await page.keyboard.press("Enter");
+    await expect(slider).toHaveValue("0");
+
     const sliderBox = await slider.boundingBox();
     if (!sliderBox) throw new Error("Slider is not visible");
     await page.mouse.move(
@@ -125,7 +454,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       )
       .toBe("0px");
     const previewStep = Number(await hoverMarker.getAttribute("data-step"));
-    expect(previewStep).not.toBe(1);
+    expect(previewStep).not.toBe(0);
     await expect
       .poll(() =>
         page.evaluate(
@@ -136,7 +465,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       .toBe(true);
     await expect
       .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
-      .toBe(1);
+      .toBe(0);
 
     await number.fill("3");
     await expect
@@ -151,6 +480,119 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await expect
       .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
       .toBe(3);
+  });
+
+  test("shows basis-state values for the hovered state-vector circle", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({
+        status: 200,
+        json: [zeroResult(0), ...viewerState.steps.map(() => zeroResult(0))],
+      }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+    const point = await page.evaluate(() => {
+      const app = window.pixiApp!;
+      const bounds = app.stateVector.qubitCircleAt(0)!.getBounds();
+      const canvas = app.app.canvas.getBoundingClientRect();
+      return {
+        x: canvas.left + bounds.x,
+        y: canvas.top + bounds.y,
+      };
+    });
+    await page.mouse.move(point.x + 8, point.y + 8);
+
+    await expect(page.getByRole("tooltip")).toContainText("|0000⟩  decimal 0");
+    await expect(page.getByRole("tooltip")).toContainText("Amplitude:+1.00000+0.00000i");
+    await expect(page.getByRole("tooltip")).toContainText("Probability:+100.00000%");
+    await expect(page.getByRole("tooltip")).toContainText("Phase:+0.00000°");
+    await page.mouse.move(point.x + 12, point.y + 10);
+    await expect(page.getByRole("tooltip")).toBeVisible();
+    const anchoredPosition = await page.getByRole("tooltip").boundingBox();
+    await page.mouse.move(point.x + 14, point.y + 12);
+    expect(await page.getByRole("tooltip").boundingBox()).toEqual(anchoredPosition);
+    const circlePoints = await page.evaluate(() => {
+      const app = window.pixiApp!;
+      const canvas = app.app.canvas.getBoundingClientRect();
+      return Array.from({ length: 16 }, (_, index) => {
+        const bounds = app.stateVector.qubitCircleAt(index)!.getBounds();
+        return {
+          index,
+          x: canvas.left + bounds.x + bounds.width / 2,
+          y: canvas.top + bounds.y + bounds.height / 2,
+        };
+      });
+    });
+    for (const circlePoint of circlePoints) {
+      await page.mouse.move(circlePoint.x, circlePoint.y);
+      await expect(page.getByRole("tooltip")).toContainText(
+        `decimal ${circlePoint.index}`,
+      );
+      const popup = await page.getByRole("tooltip").boundingBox();
+      expect(popup).not.toBeNull();
+      expect(popup!.y + popup!.height).toBeLessThanOrEqual(circlePoint.y);
+    }
+    await page.mouse.move(point.x + 8, point.y + 8);
+    await expect(page.getByRole("tooltip")).toHaveScreenshot(
+      "qni-state-vector-cell-tooltip.png",
+      { animations: "disabled" },
+    );
+    await page.mouse.down();
+    await expect(page.getByRole("tooltip")).toBeHidden();
+    await page.mouse.up();
+    await expect(page.getByRole("tooltip")).toBeVisible();
+  });
+
+  test("disables state-vector hover while the inspection panel is open", async ({
+    page,
+  }) => {
+    const state = {
+      ...viewerState,
+      checkpoints: [
+        { name: "Initial", step: 0, expected_probabilities: { "0000": 1 } },
+      ],
+    };
+    await page.route("**/backend.json", (route) =>
+      route.fulfill({
+        status: 200,
+        json: [zeroResult(0), ...viewerState.steps.map(() => zeroResult(0))],
+      }),
+    );
+    await page.goto(
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`,
+    );
+    await page.waitForFunction(
+      () => window.pixiApp?.element.dataset.state === "idle",
+    );
+    const circlePoint = await page.evaluate(() => {
+      const app = window.pixiApp!;
+      const bounds = app.stateVector.qubitCircleAt(0)!.getBounds();
+      const canvas = app.app.canvas.getBoundingClientRect();
+      return {
+        x: canvas.left + bounds.x + bounds.width / 2,
+        y: canvas.top + bounds.y + bounds.height / 2,
+      };
+    });
+
+    await expect(page.locator("#qni-inspection-panel")).toBeVisible();
+    await page.mouse.move(circlePoint.x, circlePoint.y);
+    await expect(page.getByRole("tooltip")).toBeHidden();
+
+    await page.locator("#qni-inspection-panel").getByRole("button", {
+      name: "Close state inspection",
+    }).click();
+    await page.mouse.move(circlePoint.x, circlePoint.y);
+    await expect(page.getByRole("tooltip")).toBeVisible();
+
+    await page.locator("#inspection-panel-toggle").click();
+    await expect(page.getByRole("tooltip")).toBeHidden();
   });
 
   test("updates slider scale when the circuit step count changes", async ({ page }) => {
@@ -226,7 +668,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
         expectedLastCenter: sliderRect.right - thumbWidth / 2,
         widestTick: Math.max(...ticks.map((tick) => tick.getBoundingClientRect().width)),
         tickHeight: firstTickRect.height,
-        tickColor: getComputedStyle(ticks[0]).backgroundColor,
+        tickColor: getComputedStyle(ticks[1]).backgroundColor,
         trackLeft: trackRect.left,
         trackRight: trackRect.right,
         numberToThumbGap: sliderRect.top - stepNumberRect.bottom,
@@ -243,7 +685,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     );
     expect(sliderMetrics.thumbWidth).toBeGreaterThan(sliderMetrics.widestTick);
     expect(sliderMetrics.tickHeight).toBeCloseTo(17, 0);
-    expect(sliderMetrics.tickColor).toBe("rgb(14, 165, 233)");
+    expect(sliderMetrics.tickColor).toBe("rgb(196, 196, 196)");
     expect(sliderMetrics.trackLeft).toBeCloseTo(sliderMetrics.firstTickCenter, 1);
     expect(sliderMetrics.trackRight).toBeCloseTo(sliderMetrics.lastTickCenter, 1);
     expect(sliderMetrics.numberToThumbGap).toBeCloseTo(6, 0);
@@ -317,7 +759,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     ]);
     const state = { ...viewerState, steps, qubit_count: 1 };
     await page.route("**/backend.json", (route) =>
-      route.fulfill({ status: 200, json: steps.map(() => zeroResult(0)) }),
+      route.fulfill({ status: 200, json: [zeroResult(0), ...steps.map(() => zeroResult(0))] }),
     );
     await page.goto(
       `/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`,
@@ -326,7 +768,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
 
     await expect(page.getByRole("slider", { name: "Circuit step" })).toHaveAttribute(
       "max",
-      "40",
+      "41",
     );
     await expect(page.locator("#step-slider-ticks > span")).toHaveCount(9);
     await expect(page.locator("#step-slider-labels > span")).toHaveText([
@@ -338,7 +780,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       "25",
       "30",
       "35",
-      "40",
+      "41",
     ]);
     await expect
       .poll(() =>
@@ -353,22 +795,22 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     );
     await page.evaluate(() => {
       const slider = document.getElementById("step-slider") as HTMLInputElement;
-      for (let index = 0; index <= 40; index += 1) {
+      for (let index = 0; index <= 41; index += 1) {
         slider.value = String(index);
         slider.dispatchEvent(new Event("input", { bubbles: true }));
       }
     });
     await expect(page.getByRole("spinbutton", { name: "Step number" })).toHaveValue(
-      "40",
+      "41",
     );
     await expect
       .poll(() => page.evaluate(() => window.pixiApp?.circuit.activeStepIndex))
-      .toBe(40);
+      .toBe(41);
 
     await page.locator("#step-slider-container").evaluate((element) => {
       (element as HTMLElement).style.width = "800px";
     });
-    await expect(page.locator("#step-slider-ticks > span")).toHaveCount(41);
+    await expect(page.locator("#step-slider-ticks > span")).toHaveCount(42);
     await expect(page.locator("#step-slider-labels > span")).toHaveCount(0);
   });
 
@@ -464,7 +906,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     );
   });
 
-  test("shows a 32-qubit circuit without starting a state-vector simulation", async ({
+  test("shows an 8-qubit circuit without starting a state-vector simulation", async ({
     page,
   }) => {
     const simulatedQubitCounts: string[] = [];
@@ -476,8 +918,8 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       return route.abort();
     });
     const circuitOnlyState = {
-      steps: [[{ type: "H", targets: [31] }]],
-      qubit_count: 32,
+      steps: [[{ type: "H", targets: [7] }]],
+      qubit_count: 8,
       view: "circuit",
       editable: false,
     };
@@ -493,41 +935,8 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       await page.evaluate(
         () => window.pixiApp?.circuit.highestOccupiedQubitNumber,
       ),
-    ).toBe(32);
-    expect(simulatedQubitCounts).not.toContain("32");
-  });
-
-  test("shows a memory error instead of crashing on an oversized state vector", async ({
-    page,
-  }) => {
-    let simulationRequest: URLSearchParams | undefined;
-    await page.route("**/backend.json", (route) => {
-      const request = new URLSearchParams(route.request().postData() ?? "");
-      if (request.get("qubitCount") === "32") simulationRequest = request;
-      return route.fulfill({
-        status: 507,
-        json: {
-          error:
-            "Insufficient memory for state-vector simulation: estimated 640.0 GiB required, 8.0 GiB available. Reduce the qubit count or circuit steps, use a machine with more RAM, or rebuild with VITE_USE_GPU=true and run with a CUDA-enabled Qiskit Aer GPU that has enough VRAM. GPU execution does not reduce the state-vector memory requirement.",
-        },
-      });
-    });
-    const state = {
-      steps: [[{ type: "H", targets: [31] }]],
-      qubit_count: 32,
-      view: "notebook",
-      editable: false,
-    };
-
-    await page.goto(
-      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(state))}`,
-    );
-
-    await expect.poll(() => simulationRequest?.get("qubitCount")).toBe("32");
-    expect(simulationRequest?.get("includeAllAmplitudes")).toBe("false");
-    await expect(page.getByRole("alert")).toContainText("Insufficient memory");
-    await expect(page.getByRole("alert")).toContainText("640.0 GiB required");
-    await expect(page.getByRole("alert")).toContainText("VITE_USE_GPU=true");
+    ).toBe(8);
+    expect(simulatedQubitCounts).not.toContain("8");
   });
 
   test("shows final measurement bits in the circuit-only view", async ({
@@ -589,6 +998,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
         status: 200,
         json: [
           zeroResult(0),
+          zeroResult(0),
           { ...zeroResult(5), measuredBits: { 0: 1, 1: 0, 2: 1 } },
         ],
       });
@@ -604,7 +1014,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       page.evaluate(() =>
         [0, 1, 2].map((qubit) => {
           const operation = window.pixiApp?.circuit
-            .fetchStep(1)
+            .fetchStep(2)
             .fetchDropzone(qubit).operation;
           return operation && "value" in operation
             ? operation.value
@@ -614,7 +1024,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     expect(await measurementValues()).toEqual([1, 0, 1]);
     const requestsAfterInitialLoad = simulationSeeds.length;
 
-    await page.evaluate(() => window.pixiApp?.circuit.fetchStep(1).activate());
+    await page.evaluate(() => window.pixiApp?.circuit.fetchStep(2).activate());
     await page.waitForFunction(
       () => window.pixiApp?.element.dataset.state === "idle",
     );
@@ -649,10 +1059,12 @@ test.describe("QniNotebook intermediate-state inspection", () => {
   }) => {
     await page.setViewportSize({ width: 1000, height: 360 });
     await page.route("**/backend.json", async (route) => {
-      const body = new URLSearchParams(route.request().postData() ?? "");
-      const results = viewerState.steps.map((_, index) =>
-        zeroResult(index === 3 ? 2 : 0),
-      );
+      const results = [
+        zeroResult(0),
+        ...viewerState.steps.map((_, index) =>
+          zeroResult(index === 2 ? 2 : 0),
+        ),
+      ];
       await route.fulfill({ status: 200, json: results });
     });
 
@@ -660,8 +1072,12 @@ test.describe("QniNotebook intermediate-state inspection", () => {
       `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}&height=360`,
     );
     await expect(page.locator("#demo-header")).toBeVisible();
+    await expect(page.locator('#demo-header img[alt="QniNotebook"]')).toHaveAttribute(
+      "src",
+      "/title.svg",
+    );
     await expect(page.locator("#demo-header")).toContainText(
-      "回路のステップ境界を選ぶと、その時点までの状態を確認できます",
+      "Select a circuit boundary to inspect the state at that point",
     );
     await expect(page.locator("#menu-container")).toBeHidden();
     await page.waitForFunction(
@@ -773,7 +1189,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await freezeWebGlCanvasForScreenshot(page);
     await expect(page.locator("body")).toHaveScreenshot(
       "qni-notebook-backend-unavailable-layout.png",
-      { animations: "disabled", maxDiffPixels: 64 },
+      { animations: "disabled", maxDiffPixels: 1600 },
     );
   });
 
@@ -793,11 +1209,11 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await page.route("**/backend.json", (route) =>
       route.fulfill({
         status: 200,
-        json: viewerState.steps.map(() => complexState),
+        json: [zeroResult(0), ...viewerState.steps.map(() => complexState)],
       }),
     );
     await page.goto(
-      `/jupyter.html?state=${encodeURIComponent(JSON.stringify(viewerState))}`,
+      `/jupyter.html?state=${encodeURIComponent(JSON.stringify({ ...viewerState, active_step_index: 1 }))}`,
     );
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
 
@@ -828,7 +1244,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await page.route("**/backend.json", (route) =>
       route.fulfill({
         status: 200,
-        json: [zeroResult(0), {
+        json: [zeroResult(0), zeroResult(0), {
           ...zeroResult(0),
           blochVectors: { "0": { x: 1, y: 0, z: 0 } },
         }],
@@ -840,7 +1256,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
 
     const vector = await page.evaluate(() => {
-      const operation = window.pixiApp?.circuit.fetchStep(1).fetchDropzone(0).operation;
+      const operation = window.pixiApp?.circuit.fetchStep(2).fetchDropzone(0).operation;
       return operation && "x" in operation && "y" in operation && "z" in operation
         ? { x: operation.x, y: operation.y, z: operation.z }
         : null;

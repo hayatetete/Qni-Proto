@@ -283,6 +283,9 @@ export class StateVectorLayout {
   }
 
   aggregateStride(displayScale: number): number {
+    // The bounded Notebook viewer promises one inspectable circle per basis
+    // state. Never merge cells within its supported 1-8 qubit range.
+    if (this.qubitCount <= 8) return 1;
     const renderedPitch = this._cellSize * Math.max(0.01, displayScale);
     if (renderedPitch >= StateVectorLayout.AGGREGATE_CELL_PITCH_THRESHOLD) {
       return 1;

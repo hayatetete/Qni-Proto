@@ -1,4 +1,4 @@
-/* global process, window */
+/* global process, window, URL */
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -10,6 +10,10 @@ const serializedState = new URL(viewerUrl).searchParams.get("state");
 if (!serializedState) throw new Error("viewer URL state is required");
 const viewerState = JSON.parse(serializedState);
 const stepCount = viewerState.steps?.length ?? 0;
+const selectableStepCount =
+  viewerState.editable === false && viewerState.view !== "circuit"
+    ? stepCount + 1
+    : stepCount;
 const basisStateCount = 2 ** (viewerState.qubit_count ?? 0);
 const screenshotDir = process.env.QNI_SCREENSHOT_DIR;
 if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
@@ -26,7 +30,7 @@ try {
 
   const stateByStep = [];
   const measuredByStep = [];
-  for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
+  for (let stepIndex = 0; stepIndex < selectableStepCount; stepIndex += 1) {
     await page.evaluate((index) => window.pixiApp?.circuit.fetchStep(index).activate(), stepIndex);
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
     if (screenshotDir) {
@@ -47,7 +51,7 @@ try {
     measuredByStep.push(
       await page.evaluate(({ stepCount: circuitStepCount, qubitCount }) => {
         const measured = {};
-        for (let circuitStep = 0; circuitStep < circuitStepCount; circuitStep += 1) {
+        for (let circuitStep = 1; circuitStep < circuitStepCount; circuitStep += 1) {
           const step = window.pixiApp?.circuit.fetchStep(circuitStep);
           for (let bit = 0; bit < qubitCount; bit += 1) {
             const operation = step?.fetchDropzone(bit).operation;
@@ -60,15 +64,15 @@ try {
           }
         }
         return measured;
-      }, { stepCount, qubitCount: viewerState.qubit_count ?? 0 }),
+      }, { stepCount: selectableStepCount, qubitCount: viewerState.qubit_count ?? 0 }),
     );
   }
 
   let revisitedMeasurement = {};
-  if (stepCount > 1) {
+  if (selectableStepCount > 1) {
     await page.evaluate(() => window.pixiApp?.circuit.fetchStep(0).activate());
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
-    await page.evaluate((index) => window.pixiApp?.circuit.fetchStep(index).activate(), stepCount - 1);
+    await page.evaluate((index) => window.pixiApp?.circuit.fetchStep(index).activate(), selectableStepCount - 1);
     await page.waitForFunction(() => window.pixiApp?.element.dataset.state === "idle");
     revisitedMeasurement = await page.evaluate(({ index, qubitCount }) => {
       const measured = {};
@@ -83,7 +87,7 @@ try {
         }
       }
       return measured;
-    }, { index: stepCount - 1, qubitCount: viewerState.qubit_count ?? 0 });
+    }, { index: selectableStepCount - 1, qubitCount: viewerState.qubit_count ?? 0 });
   }
 
   const headerVisible = await page.locator("#demo-header").isVisible();

@@ -218,7 +218,7 @@ export class Circuit extends Container {
    * JSONデータからCircuitのインスタンスの状態を復元する
    * @param jsonString 回路全体のJSONデータ文字列
    */
-  fromJSON(jsonString: string): void {
+  fromJSON(jsonString: string, preserveEmptySteps = false): void {
     const circuitData = JSON.parse(jsonString) as CircuitJson;
 
     this.steps.forEach((step) => step.destroy());
@@ -238,7 +238,15 @@ export class Circuit extends Container {
       this.fetchStep(0).activate();
     }
 
-    this.update();
+    if (preserveEmptySteps) {
+      this.removeUnusedUpperWires();
+      this.redrawDropzoneInputAndOutputWires();
+      this.updateConnections();
+      this.markerManager.update(this.steps);
+      this.emit(CIRCUIT_EVENTS.STEPS_CHANGED, this.steps.length);
+    } else {
+      this.update();
+    }
   }
 
   toString() {

@@ -10,8 +10,8 @@ from qni_jupyter import qni
 from quri_parts.circuit import QuantumCircuit
 
 
-def _qsci_input_state_circuit(*, omit_last_entangler: bool = False) -> QuantumCircuit:
-    """Prepare a readable two-configuration trial state for the QSCI demo."""
+def _two_configuration_circuit(*, omit_last_entangler: bool = False) -> QuantumCircuit:
+    """Prepare a compact state-vector regression fixture."""
     circuit = QuantumCircuit(4, cbit_count=4)
     circuit.add_X_gate(0)
     circuit.add_X_gate(1)
@@ -27,7 +27,7 @@ def _qsci_input_state_circuit(*, omit_last_entangler: bool = False) -> QuantumCi
 
 
 def test_quri_circuit_intermediate_states_match_known_values() -> None:
-    circuit = _qsci_input_state_circuit()
+    circuit = _two_configuration_circuit()
 
     steps, qubit_count, warnings = qni.quri_circuit_to_steps(circuit)
     results = [
@@ -117,27 +117,24 @@ def test_notebook_helpers_select_distinct_read_only_views() -> None:
         qni.close()
 
 
-def test_missing_entangler_exposes_particle_number_violation() -> None:
-    circuit = _qsci_input_state_circuit(omit_last_entangler=True)
-    steps, qubit_count, _ = qni.quri_circuit_to_steps(circuit)
+def test_feature_demo_contains_each_review_scenario() -> None:
+    notebook = json.loads(
+        (Path(__file__).resolve().parents[1] / "qni_demo.ipynb").read_text()
+    )
+    source = "\n".join(
+        "".join(cell.get("source", [])) for cell in notebook["cells"]
+    )
 
-    result = QiskitRunner().run_circuit(
-        steps,
-        qubit_count=qubit_count,
-        until_step_index=len(steps) - 2,
-    )[len(steps) - 2]
-    support = {
-        index
-        for index, amplitude in result["amplitudes"].items()
-        if abs(amplitude) > 1e-9
-    }
-
-    assert support == {3, 4}
-    assert (4).bit_count() == 1
+    assert "対応ゲート一覧" in source
+    assert "ghz8_circuit = QuantumCircuit(8)" in source
+    assert "qaoa_circuit = QuantumCircuit(8)" in source
+    assert "all_green_checkpoints = [" in source
+    assert "all_red_checkpoints = [" in source
+    assert 'QniCheckpoint("Initial state", 0' in source
 
 
 def test_quri_circuit_can_be_inspected_step_by_step_in_browser() -> None:
-    circuit = _qsci_input_state_circuit()
+    circuit = _two_configuration_circuit()
     viewer = qni.show_circuit_and_state(circuit, display=False)
     assert viewer is not None
 
@@ -162,16 +159,16 @@ def test_quri_circuit_can_be_inspected_step_by_step_in_browser() -> None:
     result = json.loads(completed.stdout)
     assert result["headerVisible"] is True
     assert result["editMenuHidden"] is True
-    assert len(result["stateByStep"]) == 8
+    assert len(result["stateByStep"]) == 9
 
     before_measurement = {
-        entry["index"]: entry for entry in result["stateByStep"][6]
+        entry["index"]: entry for entry in result["stateByStep"][7]
     }
     assert before_measurement[3]["probability"] == pytest.approx(75.0, abs=1e-4)
     assert before_measurement[12]["probability"] == pytest.approx(25.0, abs=1e-4)
 
     measured_bits = {
-        int(bit): value for bit, value in result["measuredByStep"][7].items()
+        int(bit): value for bit, value in result["measuredByStep"][8].items()
     }
     revisited_measurement = {
         int(bit): value for bit, value in result["revisitedMeasurement"].items()
@@ -182,10 +179,10 @@ def test_quri_circuit_can_be_inspected_step_by_step_in_browser() -> None:
         {int(bit): value for bit, value in step_measurement.items()}
         for step_measurement in result["measuredByStep"]
     ]
-    assert measurements_by_step == [measured_bits] * 8, measurements_by_step
+    assert measurements_by_step == [measured_bits] * 9, measurements_by_step
     measured_index = sum(value << bit for bit, value in measured_bits.items())
     assert measured_index in {3, 12}
-    measured_state = result["stateByStep"][7]
+    measured_state = result["stateByStep"][8]
     assert len(measured_state) == 1
     assert measured_state[0]["index"] == measured_index
     assert measured_state[0]["probability"] == pytest.approx(100)

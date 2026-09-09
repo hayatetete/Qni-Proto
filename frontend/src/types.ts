@@ -48,4 +48,5 @@ export type SerializedOperation = {
   antiControls?: number[];
   angle?: string;
   span?: number;
+  source?: { line: number; code: string; scope?: string };
 };

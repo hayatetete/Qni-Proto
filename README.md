@@ -1,8 +1,7 @@
 # QniNotebook
 
 QniNotebook is a read-only intermediate-state visualizer for small QURI Parts
-circuits. It is not presented as a general quantum IDE, a 32-qubit simulator,
-or a full visual circuit debugger.
+circuits. The initial demo supports circuits with up to 8 qubits.
 
 ## 動作確認のしかた
 
@@ -15,7 +14,7 @@ docker build -f Dockerfile . -t qni-gl
 docker イメージを起動
 
 ```shell
-docker run --gpus all -p 8000:8000 --rm -it qni-gl
+docker run -p 8000:8000 --rm -it qni-gl
 ```
 
 ブラウザで `http://localhost:8000/` を開く
@@ -47,10 +46,12 @@ docker compose -f compose.demo.yml up --build
 
 この場合は`http://127.0.0.1:18888/lab/tree/qni_demo.ipynb`を開きます。
 
-### 初期デモの対応範囲
+> `8000` がすでに使われている環境では、上のように `QNI_DEMO_BACKEND_PORT` を別ポートに変えて起動してください。
 
-- 1〜8量子ビット（完全な状態ベクトルを使用）
-- H、X、Y、Z、S、S†、T、T†、√X、数値で角度が確定したRX、RY、RZ、U1
+### 対応範囲
+
+- 1〜8量子ビットの回路入力、回路図表示、状態ベクトル表示
+- H、X、Y、Z、S、S†、T、T†、√X、数値で角度が確定した回転ゲートと位相ゲート
 - CNOT、CZ、Toffoli、対応する複数制御ゲート、SWAP、Measurement
 - 読み取り専用の `qni.show_circuit_and_state(circuit)`
 - 1リクエストの上限は256 KiB
@@ -58,7 +59,7 @@ docker compose -f compose.demo.yml up --build
 
 未対応ゲート、未束縛のパラメータ式、アンチコントロール、保持できない
 classical bit mappingは、別の意味で表示せず例外で停止します。
-GUI編集、`commit()`、20〜32量子ビットの性能保証は初期デモの対象外です。
+GUI編集と`commit()`は、この読み取り専用デモの対象外です。
 
 ### 準備
 
@@ -143,13 +144,51 @@ qni.show_circuit_and_state(circuit)
 ```
 
 回路のステップ境界を選択すると、そのステップまで実行した状態ベクトルを確認できます。
+Step 0はゲート適用前の初期状態です。基底ラベルは`|q(n-1)…q0⟩`の順で、
+Qiskit/QURIと同じく`q0`を右端に表示します。円の面積は確率、針は位相を表し、
+各円へカーソルを置くとbitstring、振幅、確率、位相を数値で確認できます。
+
+期待条件を自動判定する場合は、名前付きチェックポイントを渡します。
+
+```python
+checks = [
+    qni.QniCheckpoint(
+        "Bell state",
+        step="last",
+        expected_probabilities={"00": 0.5, "11": 0.5},
+        source="build_bell(): CNOT",
+    )
+]
+qni.show_circuit_and_state(
+    circuit,
+    checkpoints=checks,
+    qubit_names=["control", "target"],
+)
+```
+
+検査パネルには各条件のPASS/FAIL、最初に失敗した境界、主要な基底状態の
+確率・振幅・位相が表示されます。失敗時は、期待値・実測値・差分も表示されます。
+パネル内の目盛り付きスライダー、または入力可能な
+`Step`番号から任意の境界へ移動できます。`quri_code=`から開いた回路では、対応するPython行も表示します。
+
+チェックポイントは、Qniが正解を推測する機能ではありません。テストと同様に、
+利用者がアルゴリズム上必ず成り立つ条件を指定します。`step=0`はゲート適用前、
+`step=1`は最初に表示された回路列の適用後です。最終境界は、回路列を数えず
+`step="last"`で指定できます。`expected_probabilities`は基底状態ごとの確率、
+位相や符号まで検査するときは`expected_amplitudes`も指定します。
+
+[`qni_demo.ipynb`](./qni_demo.ipynb) は、実装済み機能を順番に確認する日本語デモです。
+対応ゲート一覧、上限の8量子ビットGHZ状態、8頂点リングMax-Cutの3層QAOA回路、
+チェックポイントがすべてPASSする例、意図的にすべてFAILする例を収録しています。
+FAIL例は実在する不具合とは主張せず、最初の失敗、期待値、実測値、差分の表示確認に使います。
 
 ### 2つの確認シナリオ
 
 - 回路構造の確認: `qni.show_circuit(circuit)`で、複数ステップのゲート、制御線、順序と、セル実行時に得た測定結果を確認します。状態ベクトルパネルは表示しません。
-- 誤りの位置特定: `qni.show_circuit_and_state(circuit)`でステップ境界を左から順に選び、既知の期待状態から最初に外れたステップを特定します。こちらが初期デモの主導線です。
+- 状態の検査: `qni.show_circuit_and_state(circuit)`で初期状態と各ステップ境界を移動し、主要状態やチェックポイント判定を確認します。
 
-初期デモでは両方とも検証済みの1〜8量子ビットに限定します。回路表示だけを行う場合の上限拡大は、このデモの価値を検証した後に別途定義します。
+初期デモでは、どちらも1〜8量子ビットの回路を受け付けます。
+`show_circuit()`は、測定を含まない回路では状態ベクトル計算を行いません。
 
 ### 回路だけを表示する
 

@@ -28,12 +28,56 @@ DEFAULT_VIEWER_HEIGHT = 480
 DEFAULT_VIEWER_WIDTH = "100%"
 DEFAULT_BACKEND_PORT = 8000
 DEFAULT_FRONTEND_PORT = 5173
-MAX_QUBITS = 32
+MAX_QUBITS = 8
 NOTEBOOK_TOOLBAR_HEIGHT = 45
 NOTEBOOK_STATE_HEADER_HEIGHT = 44
 QniView = Literal["notebook", "state", "circuit"]
 QniInteractionMode = Literal["edit", "inspect"]
 QniStep = int | Literal["last"]
+
+
+@dataclass(frozen=True)
+class QniCheckpoint:
+    """A named boundary and its expected basis-state probabilities."""
+
+    name: str
+    step: int | Literal["last"]
+    expected_probabilities: dict[str, float]
+    expected_amplitudes: dict[str, tuple[float, float]] = field(default_factory=dict)
+    tolerance: float = 1e-6
+    source: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        """Return the validated URL-state representation."""
+        if not self.name.strip():
+            raise ValueError("Checkpoint name must not be empty.")
+        if self.step != "last" and self.step < 0:
+            raise ValueError("Checkpoint step must be non-negative.")
+        if self.tolerance < 0:
+            raise ValueError("Checkpoint tolerance must be non-negative.")
+        expected: dict[str, float] = {}
+        for bitstring, probability in self.expected_probabilities.items():
+            if not bitstring or any(bit not in "01" for bit in bitstring):
+                raise ValueError(f"Invalid checkpoint bitstring: {bitstring!r}.")
+            value = float(probability)
+            if not 0 <= value <= 1:
+                raise ValueError("Checkpoint probabilities must be between 0 and 1.")
+            expected[bitstring] = value
+        expected_amplitudes: dict[str, list[float]] = {}
+        for bitstring, amplitude in self.expected_amplitudes.items():
+            if not bitstring or any(bit not in "01" for bit in bitstring):
+                raise ValueError(f"Invalid checkpoint bitstring: {bitstring!r}.")
+            if len(amplitude) != 2:
+                raise ValueError("Checkpoint amplitudes must be (real, imaginary) pairs.")
+            expected_amplitudes[bitstring] = [float(amplitude[0]), float(amplitude[1])]
+        return {
+            "name": self.name,
+            "step": self.step,
+            "expected_probabilities": expected,
+            "expected_amplitudes": expected_amplitudes,
+            "tolerance": self.tolerance,
+            **({"source": self.source} if self.source else {}),
+        }
 
 
 class QuriLikeCircuit(Protocol):
@@ -519,6 +563,8 @@ def open(
     active_step: QniStep | None = None,
     focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
+    checkpoints: Sequence[QniCheckpoint] = (),
+    qubit_names: Sequence[str] = (),
     display: Literal[True] = True,
 ) -> QniEditor | None: ...
 
@@ -537,6 +583,8 @@ def open(
     active_step: QniStep | None = None,
     focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
+    checkpoints: Sequence[QniCheckpoint] = (),
+    qubit_names: Sequence[str] = (),
     display: Literal[False] = False,
 ) -> QniViewer: ...
 
@@ -554,6 +602,8 @@ def open(
     active_step: QniStep | None = None,
     focus_active_step: bool = False,
     mode: QniInteractionMode = "edit",
+    checkpoints: Sequence[QniCheckpoint] = (),
+    qubit_names: Sequence[str] = (),
     display: bool = True,
 ) -> QniViewer | None:
     """Open Qni and return an editor handle when ``mode="edit"``."""
@@ -571,6 +621,22 @@ def open(
     if quri_code is not None:
         steps, inferred_qubit_count, warnings = quri_code_to_steps(quri_code)
         qubit_count = qubit_count if qubit_count is not None else inferred_qubit_count
+    if steps is not None:
+        referenced_qubits = [
+            int(index)
+            for step_operations in steps
+            for operation in step_operations
+            for key in ("targets", "controls", "antiControls")
+            for index in operation.get(key, ())
+        ]
+        inferred_steps_qubit_count = max(referenced_qubits, default=0) + 1
+        qubit_count = qubit_count if qubit_count is not None else inferred_steps_qubit_count
+        if referenced_qubits and (
+            min(referenced_qubits) < 0 or inferred_steps_qubit_count > MAX_QUBITS
+        ):
+            raise ValueError(
+                f"QniNotebook steps may reference only qubits 0-{MAX_QUBITS - 1}."
+            )
     if qubit_count is not None and not 1 <= qubit_count <= MAX_QUBITS:
         raise ValueError(
             f"QniNotebook supports 1-{MAX_QUBITS} qubits; "
@@ -580,7 +646,36 @@ def open(
         height = _preferred_viewer_height(view, steps or [], qubit_count)
     if view != "notebook" and width == DEFAULT_VIEWER_WIDTH:
         width = _preferred_viewer_width(view, steps or [], qubit_count)
-    active_step_index = _resolve_active_step_index(active_step, steps or [])
+    active_step_index = _resolve_active_step_index(
+        active_step,
+        steps or [],
+        include_initial_boundary=mode == "inspect" and view != "circuit",
+    )
+    boundary_count = len(steps or []) + 1
+    checkpoint_json = [checkpoint.to_json() for checkpoint in checkpoints]
+    for checkpoint in checkpoint_json:
+        if checkpoint["step"] == "last":
+            checkpoint["step"] = boundary_count - 1
+    for checkpoint in checkpoint_json:
+        if checkpoint["step"] >= boundary_count:
+            raise ValueError(
+                f"Checkpoint {checkpoint['name']!r} selects Step {checkpoint['step']}, "
+                f"but this circuit has Steps 0-{boundary_count - 1}."
+            )
+    resolved_qubit_count = qubit_count or 1
+    for checkpoint in checkpoint_json:
+        bitstrings = set(checkpoint["expected_probabilities"]) | set(
+            checkpoint["expected_amplitudes"]
+        )
+        if any(len(bits) != resolved_qubit_count for bits in bitstrings):
+            raise ValueError(
+                f"Checkpoint {checkpoint['name']!r} bitstrings must contain "
+                f"exactly {resolved_qubit_count} bits."
+            )
+    if qubit_names and len(qubit_names) != resolved_qubit_count:
+        raise ValueError(
+            f"qubit_names must contain {resolved_qubit_count} names; got {len(qubit_names)}."
+        )
 
     backend_port = int(os.environ.get("QNI_BACKEND_PORT", DEFAULT_BACKEND_PORT))
     frontend_port = (
@@ -606,6 +701,8 @@ def open(
         "view": view,
         "editable": editable,
         "simulation_seed": uuid.uuid4().int & 0xFFFFFFFF,
+        "checkpoints": checkpoint_json,
+        **({"qubit_names": [str(name) for name in qubit_names]} if qubit_names else {}),
         **(
             {"active_step_index": active_step_index}
             if active_step_index is not None
@@ -743,6 +840,8 @@ def show_circuit_and_state(
     width: str | int = DEFAULT_VIEWER_WIDTH,
     port: int | None = None,
     step: QniStep = "last",
+    checkpoints: Sequence[QniCheckpoint] = (),
+    qubit_names: Sequence[str] = (),
     display: bool = True,
 ) -> QniViewer | None:
     """Show the circuit and its state vector side by side.
@@ -761,6 +860,8 @@ def show_circuit_and_state(
         port=port,
         view="notebook",
         active_step=step,
+        checkpoints=checkpoints,
+        qubit_names=qubit_names,
         mode="inspect",
         display=display,
     )
@@ -773,6 +874,8 @@ def inspect(
     width: str | int = DEFAULT_VIEWER_WIDTH,
     port: int | None = None,
     step: QniStep = "last",
+    checkpoints: Sequence[QniCheckpoint] = (),
+    qubit_names: Sequence[str] = (),
     display: bool = True,
 ) -> QniViewer | None:
     """Compatibility alias for show_circuit_and_state()."""
@@ -782,6 +885,8 @@ def inspect(
         width=width,
         port=port,
         step=step,
+        checkpoints=checkpoints,
+        qubit_names=qubit_names,
         display=display,
     )
 
@@ -873,20 +978,24 @@ def _preferred_viewer_height(
 def _resolve_active_step_index(
     active_step: QniStep | None,
     steps: list[list[dict[str, Any]]],
+    *,
+    include_initial_boundary: bool = False,
 ) -> int | None:
     if active_step is None:
         return None
-    if not steps:
+    position_count = len(steps) + (1 if include_initial_boundary else 0)
+    if position_count == 0:
         return 0
     if active_step == "last":
-        return len(steps) - 1
+        return position_count - 1
     if not isinstance(active_step, int):
         raise ValueError('active_step must be an integer, "last", or None.')
     if active_step < 0:
-        active_step = len(steps) + active_step
-    if active_step < 0 or active_step >= len(steps):
+        active_step = position_count + active_step
+    if active_step < 0 or active_step >= position_count:
         raise ValueError(
-            f"active_step {active_step} is out of range for {len(steps)} steps."
+            f"active_step {active_step} is out of range for "
+            f"{position_count} selectable positions."
         )
     return active_step
 
@@ -1181,7 +1290,12 @@ def _circuit_layout_fingerprint(circuit: QuriLikeCircuit) -> tuple[Any, ...]:
 def quri_code_to_steps(
     code: str,
 ) -> tuple[list[list[dict[str, Any]]], int, tuple[str, ...]]:
-    """Parse simple QURI Parts Python code into Qni steps without importing QURI."""
+    """Parse bounded QURI Parts Python code into Qni steps without executing it.
+
+    Direct circuit calls, calls to locally defined builder functions, and loops
+    over a statically known ``range`` are expanded.  Source metadata keeps the
+    original line together with its function and loop iteration.
+    """
     try:
         module = ast.parse(code)
     except SyntaxError as exc:
@@ -1198,14 +1312,22 @@ def quri_code_to_steps(
     steps: list[list[dict[str, Any]]] = []
     warnings: list[str] = []
     qubit_count = max(circuit_names.values())
-    for statement in module.body:
-        operation = _statement_to_qni_operation(statement, circuit_names)
-        if operation is None:
-            continue
-        if isinstance(operation, str):
-            warnings.append(operation)
-            continue
-        steps.append([operation])
+    function_defs = {
+        statement.name: statement
+        for statement in module.body
+        if isinstance(statement, ast.FunctionDef)
+    }
+    _collect_quri_operations(
+        module.body,
+        circuit_names,
+        int_names,
+        function_defs,
+        code,
+        "module",
+        steps,
+        warnings,
+        (),
+    )
 
     return steps, qubit_count, tuple(warnings)
 
@@ -1234,7 +1356,7 @@ def _find_quantum_circuit_variables(
 ) -> dict[str, int]:
     """Collect variable names assigned from QuantumCircuit(qubit_count)."""
     circuit_names: dict[str, int] = {}
-    for statement in module.body:
+    for statement in ast.walk(module):
         if not isinstance(statement, ast.Assign):
             continue
         if not isinstance(statement.value, ast.Call):
@@ -1256,9 +1378,198 @@ def _find_quantum_circuit_variables(
     return circuit_names
 
 
+def _collect_quri_operations(
+    statements: Sequence[ast.stmt],
+    circuit_names: dict[str, int],
+    literal_names: dict[str, Any],
+    function_defs: dict[str, ast.FunctionDef],
+    code: str,
+    scope: str,
+    steps: list[list[dict[str, Any]]],
+    warnings: list[str],
+    call_stack: tuple[str, ...],
+) -> None:
+    """Statically expand supported statements while retaining source context."""
+    names = dict(literal_names)
+    for statement in statements:
+        if isinstance(statement, ast.FunctionDef):
+            # A definition contributes gates only when a module/function call
+            # reaches it; merely declaring a helper must not alter the circuit.
+            continue
+
+        if isinstance(statement, ast.Assign):
+            value = _literal_node_value(statement.value, names)
+            if value is not None:
+                for target in statement.targets:
+                    if isinstance(target, ast.Name):
+                        names[target.id] = value
+            if isinstance(statement.value, ast.Call):
+                _collect_called_quri_function(
+                    statement.value,
+                    circuit_names,
+                    names,
+                    function_defs,
+                    code,
+                    scope,
+                    steps,
+                    warnings,
+                    call_stack,
+                )
+            continue
+
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+            if _collect_called_quri_function(
+                statement.value,
+                circuit_names,
+                names,
+                function_defs,
+                code,
+                scope,
+                steps,
+                warnings,
+                call_stack,
+            ):
+                continue
+            operation = _statement_to_qni_operation(
+                statement,
+                circuit_names,
+                names,
+            )
+            if operation is None:
+                continue
+            if isinstance(operation, str):
+                warnings.append(operation)
+                continue
+            source_text = ast.get_source_segment(code, statement) or ""
+            operation["source"] = {
+                "line": statement.lineno,
+                "code": source_text.strip(),
+                "scope": scope,
+            }
+            steps.append([operation])
+            continue
+
+        if isinstance(statement, ast.For) and isinstance(statement.target, ast.Name):
+            values = _static_range_values(statement.iter, names)
+            if values is None:
+                warnings.append(
+                    f"Loop at line {statement.lineno} was skipped because its range is not static."
+                )
+                continue
+            for value in values:
+                loop_names = {**names, statement.target.id: value}
+                _collect_quri_operations(
+                    statement.body,
+                    circuit_names,
+                    loop_names,
+                    function_defs,
+                    code,
+                    f"{scope} > for {statement.target.id}={value}",
+                    steps,
+                    warnings,
+                    call_stack,
+                )
+            continue
+
+        if isinstance(statement, ast.If):
+            condition = _literal_node_value(statement.test, names)
+            if not isinstance(condition, bool):
+                warnings.append(
+                    f"Conditional at line {statement.lineno} was skipped because it is not static."
+                )
+                continue
+            _collect_quri_operations(
+                statement.body if condition else statement.orelse,
+                circuit_names,
+                names,
+                function_defs,
+                code,
+                scope,
+                steps,
+                warnings,
+                call_stack,
+            )
+
+
+def _collect_called_quri_function(
+    call: ast.Call,
+    circuit_names: dict[str, int],
+    literal_names: dict[str, Any],
+    function_defs: dict[str, ast.FunctionDef],
+    code: str,
+    parent_scope: str,
+    steps: list[list[dict[str, Any]]],
+    warnings: list[str],
+    call_stack: tuple[str, ...],
+) -> bool:
+    """Expand one statically resolvable local function call."""
+    function_name = _call_name(call.func)
+    function = function_defs.get(function_name or "")
+    if function is None:
+        return False
+    if function.name in call_stack:
+        warnings.append(f'Recursive function "{function.name}" was skipped.')
+        return True
+
+    function_names = dict(literal_names)
+    positional = list(function.args.args)
+    for parameter, argument in zip(positional, call.args):
+        value = _literal_node_value(argument, literal_names)
+        if value is not None:
+            function_names[parameter.arg] = value
+    for keyword in call.keywords:
+        if keyword.arg is None:
+            continue
+        value = _literal_node_value(keyword.value, literal_names)
+        if value is not None:
+            function_names[keyword.arg] = value
+    defaults = function.args.defaults
+    for parameter, default in zip(positional[-len(defaults) :], defaults):
+        if parameter.arg in function_names:
+            continue
+        value = _literal_node_value(default, literal_names)
+        if value is not None:
+            function_names[parameter.arg] = value
+
+    _collect_quri_operations(
+        function.body,
+        circuit_names,
+        function_names,
+        function_defs,
+        code,
+        f"{parent_scope} > {function.name}()",
+        steps,
+        warnings,
+        (*call_stack, function.name),
+    )
+    return True
+
+
+def _static_range_values(node: ast.AST, names: dict[str, Any]) -> range | None:
+    """Return a bounded static range, or ``None`` for dynamic loops."""
+    if not isinstance(node, ast.Call) or _call_name(node.func) != "range":
+        return None
+    values = [_literal_node_value(argument, names) for argument in node.args]
+    if not 1 <= len(values) <= 3 or not all(isinstance(value, int) for value in values):
+        return None
+    result = range(*values)
+    return result if len(result) <= 10_000 else None
+
+
+def _literal_node_value(node: ast.AST, names: dict[str, Any]) -> Any | None:
+    """Evaluate literals and known names without executing user code."""
+    if isinstance(node, ast.Name):
+        return names.get(node.id)
+    try:
+        return ast.literal_eval(node)
+    except (ValueError, TypeError):
+        return None
+
+
 def _statement_to_qni_operation(
     statement: ast.stmt,
     circuit_names: dict[str, int],
+    literal_names: dict[str, Any] | None = None,
 ) -> dict[str, Any] | str | None:
     """Convert one circuit method call statement into a Qni operation or warning."""
     if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
@@ -1272,7 +1583,7 @@ def _statement_to_qni_operation(
         return None
 
     method_name = call.func.attr
-    operation = _quri_method_call_to_operation(method_name, call)
+    operation = _quri_method_call_to_operation(method_name, call, literal_names)
     if operation is None:
         return f'QURI code call "{method_name}" was skipped.'
     return operation
@@ -1281,6 +1592,7 @@ def _statement_to_qni_operation(
 def _quri_method_call_to_operation(
     method_name: str,
     call: ast.Call,
+    literal_names: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Map supported QuantumCircuit.add_* calls to Qni serialized operations."""
     single_methods = {
@@ -1295,7 +1607,7 @@ def _quri_method_call_to_operation(
         "add_SqrtX_gate": "X^½",
     }
     if method_name in single_methods:
-        target = _literal_int_arg(call, 0)
+        target = _literal_int_arg(call, 0, literal_names)
         return None if target is None else _operation(single_methods[method_name], [target])
 
     angle_methods = {
@@ -1305,8 +1617,8 @@ def _quri_method_call_to_operation(
         "add_U1_gate": "P",
     }
     if method_name in angle_methods:
-        target = _literal_int_arg(call, 0)
-        angle = _literal_arg(call, 1)
+        target = _literal_int_arg(call, 0, literal_names)
+        angle = _literal_arg(call, 1, literal_names)
         if target is None:
             return None
         operation = _operation(angle_methods[method_name], [target])
@@ -1315,45 +1627,45 @@ def _quri_method_call_to_operation(
         return operation
 
     if method_name == "add_CNOT_gate":
-        control = _literal_int_arg(call, 0)
-        target = _literal_int_arg(call, 1)
+        control = _literal_int_arg(call, 0, literal_names)
+        target = _literal_int_arg(call, 1, literal_names)
         if control is None or target is None:
             return None
         return _operation("X", [target], [control])
 
     if method_name == "add_CZ_gate":
-        control = _literal_int_arg(call, 0)
-        target = _literal_int_arg(call, 1)
+        control = _literal_int_arg(call, 0, literal_names)
+        target = _literal_int_arg(call, 1, literal_names)
         if control is None or target is None:
             return None
         return _operation("Z", [target], [control])
 
     if method_name == "add_TOFFOLI_gate":
-        control0 = _literal_int_arg(call, 0)
-        control1 = _literal_int_arg(call, 1)
-        target = _literal_int_arg(call, 2)
+        control0 = _literal_int_arg(call, 0, literal_names)
+        control1 = _literal_int_arg(call, 1, literal_names)
+        target = _literal_int_arg(call, 2, literal_names)
         if control0 is None or control1 is None or target is None:
             return None
         return _operation("X", [target], [control0, control1])
 
     if method_name == "add_SWAP_gate":
-        target0 = _literal_int_arg(call, 0)
-        target1 = _literal_int_arg(call, 1)
+        target0 = _literal_int_arg(call, 0, literal_names)
+        target1 = _literal_int_arg(call, 1, literal_names)
         if target0 is None or target1 is None:
             return None
         return _operation("Swap", [target0, target1])
 
     if method_name == "measure":
-        targets = _literal_int_list_arg(call, 0)
+        targets = _literal_int_list_arg(call, 0, literal_names)
         if targets is None:
-            target = _literal_int_arg(call, 0)
+            target = _literal_int_arg(call, 0, literal_names)
             targets = None if target is None else [target]
         if targets is None:
             return None
         operation = _operation("Measure", targets)
-        classical_indices = _literal_int_list_arg(call, 1)
+        classical_indices = _literal_int_list_arg(call, 1, literal_names)
         if classical_indices is None:
-            classical_index = _literal_int_arg(call, 1)
+            classical_index = _literal_int_arg(call, 1, literal_names)
             classical_indices = None if classical_index is None else [classical_index]
         if classical_indices is not None:
             operation["classical_indices"] = classical_indices
@@ -1463,27 +1775,28 @@ def _call_name(node: ast.AST) -> str | None:
     return None
 
 
-def _literal_arg(call: ast.Call, index: int) -> Any | None:
+def _literal_arg(
+    call: ast.Call,
+    index: int,
+    literal_names: dict[str, Any] | None = None,
+) -> Any | None:
     """Read a positional call argument only when it is a Python literal."""
     if index >= len(call.args):
         return None
-    try:
-        return ast.literal_eval(call.args[index])
-    except (ValueError, TypeError):
-        return None
+    return _literal_node_value(call.args[index], literal_names or {})
 
 
 def _literal_int_arg(
     call: ast.Call,
     index: int,
-    int_names: dict[str, int] | None = None,
+    int_names: dict[str, Any] | None = None,
 ) -> int | None:
     """Read a positional call argument as an int literal or known int variable."""
     if int_names is not None and index < len(call.args):
         node = call.args[index]
         if isinstance(node, ast.Name) and node.id in int_names:
             return int_names[node.id]
-    value = _literal_arg(call, index)
+    value = _literal_arg(call, index, int_names)
     return value if isinstance(value, int) else None
 
 
@@ -1506,9 +1819,13 @@ def _literal_int_keyword(
     return None
 
 
-def _literal_int_list_arg(call: ast.Call, index: int) -> list[int] | None:
+def _literal_int_list_arg(
+    call: ast.Call,
+    index: int,
+    literal_names: dict[str, Any] | None = None,
+) -> list[int] | None:
     """Read a positional call argument as a list of literal integers."""
-    value = _literal_arg(call, index)
+    value = _literal_arg(call, index, literal_names)
     if isinstance(value, int):
         return [value]
     if not isinstance(value, (list, tuple)):

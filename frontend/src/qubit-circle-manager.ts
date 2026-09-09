@@ -44,14 +44,15 @@ export class QubitCircleManager {
 
     this.visibleCells.forEach(({ position, indices, approximate }) => {
       const key = this.circleKeyAt(position);
-      const circle = this.circles.get(key);
+      let circle = this.circles.get(key);
 
       if (!circle) {
-        this.createQubitCircle(position, approximate);
+        circle = this.createQubitCircle(position, approximate);
       } else {
         this.updateQubitCirclePositionAndSize(circle, position, approximate);
         unusedCircles.delete(key);
       }
+      circle.setBasisState(indices[0], this.layout.qubitCount);
 
       indices.forEach((index) => {
         visibleQubitCircleIndices.add(index);
@@ -104,6 +105,13 @@ export class QubitCircleManager {
       });
 
       circle.probability = Math.min(100, probability * 100);
+      if (indices.length === 1) {
+        circle.setBasisState(
+          indices[0],
+          this.layout.qubitCount,
+          amplitudes[indices[0]] ?? [0, 0],
+        );
+      }
       if (probability > 0) {
         circle.phase = Math.atan2(imagSum, realSum);
       }
@@ -125,7 +133,7 @@ export class QubitCircleManager {
     });
   }
 
-  private createQubitCircle(position: Point, approximate: boolean): void {
+  private createQubitCircle(position: Point, approximate: boolean): QubitCircle {
     const circle = new QubitCircle(this.layout.qubitCircleSize);
     const key = this.circleKeyAt(position);
 
@@ -134,6 +142,7 @@ export class QubitCircleManager {
     circle.approximate = approximate;
     circle.position.copyFrom(position);
     this.container.addChild(circle);
+    return circle;
   }
 
   private updateQubitCirclePositionAndSize(

@@ -2,6 +2,7 @@ import { App } from "./app";
 import { SerializedOperation } from "./types";
 import { generateQuriCode } from "./quri-code-generator";
 import { mountStepSlider } from "./step-slider";
+import { setupInspectionPanel, type InspectionCheckpoint } from "./inspection-panel";
 
 type JupyterInitialState = {
   steps?: SerializedOperation[][];
@@ -14,6 +15,8 @@ type JupyterInitialState = {
   draft_id?: string;
   backendUrl?: string;
   simulation_seed?: number;
+  checkpoints?: InspectionCheckpoint[];
+  qubit_names?: string[];
 };
 
 type CircuitJson = {
@@ -43,11 +46,22 @@ export function loadJupyterInitialState(app: App): void {
   if (state.simulation_seed !== undefined) {
     app.setSimulationSeed(state.simulation_seed);
   }
+  if (state.backendUrl) {
+    app.setSimulationBackendUrl(state.backendUrl);
+  }
   app.loadCircuitJson({
     ...toCircuitJson(state),
     editable: state.editable,
   });
   if ((state.view ?? "notebook") === "notebook") mountStepSlider(app);
+  if ((state.view ?? "notebook") !== "circuit") {
+    setupInspectionPanel(
+      app,
+      state.checkpoints ?? [],
+      state.steps ?? [],
+      state.qubit_names ?? [],
+    );
+  }
   setupEditorDraftSync(app, state);
 }
 
@@ -236,18 +250,24 @@ export function jupyterViewModeFromUrl(): JupyterViewMode {
 export function toCircuitJson(state: JupyterInitialState): CircuitJson {
   const steps = state.steps ?? [];
   const qubitCount = requiredQubitCount(steps, state.qubit_count);
-  const cols =
-    steps.length === 0
-      ? [emptyColumn(qubitCount)]
-      : steps.map((step) => stepToColumn(step, qubitCount));
+  // Read-only inspection exposes the state before the first gate as boundary 0.
+  // Subsequent boundary numbers then mean "after N circuit steps".
+  const inspectInitialState = state.editable === false && state.view !== "circuit";
+  const cols = [
+    ...(inspectInitialState ? [emptyColumn(qubitCount)] : []),
+    ...(steps.length === 0
+      ? inspectInitialState
+        ? []
+        : [emptyColumn(qubitCount)]
+      : steps.map((step) => stepToColumn(step, qubitCount))),
+  ];
+  const activeStepIndex = state.active_step_index ?? 0;
 
   return {
     cols,
     qubitCount,
     ...(state.title ? { title: state.title } : {}),
-    ...(state.active_step_index !== undefined
-      ? { activeStepIndex: state.active_step_index }
-      : {}),
+    activeStepIndex,
     ...(state.focus_active_step !== undefined
       ? { focusActiveStep: state.focus_active_step }
       : {}),

@@ -1,5 +1,5 @@
 import { Colors } from "./colors";
-import { Container, Graphics } from "pixi.js";
+import { Circle, Container, FederatedPointerEvent, Graphics } from "pixi.js";
 import { Size } from "./size";
 import { Spacing } from "./spacing";
 
@@ -27,6 +27,10 @@ export class QubitCircle extends Container {
   private border: Graphics;
   private phaseContainer: Container;
   private phaseHand: Graphics;
+  private basisIndex = 0;
+  private qubitCount = 1;
+  private amplitude: [number, number] = [0, 0];
+  private selected = false;
 
   constructor(size: Size = "xl") {
     super();
@@ -43,6 +47,63 @@ export class QubitCircle extends Container {
     this.updateBorder();
     this.updatePhaseHand();
     this.updatePhaseRotation();
+    this.eventMode = "static";
+    this.cursor = "default";
+    this.updateHitArea();
+    this.on("pointerenter", this.showDetails, this)
+      .on("pointerleave", this.hideDetails, this)
+      .on("pointerdown", this.dismissDetails, this)
+      .on("pointerup", this.showDetails, this);
+  }
+
+  setBasisState(
+    basisIndex: number,
+    qubitCount: number,
+    amplitude: [number, number] = this.amplitude,
+  ): void {
+    this.basisIndex = basisIndex;
+    this.qubitCount = qubitCount;
+    this.amplitude = amplitude;
+  }
+
+  private showDetails(event: FederatedPointerEvent): void {
+    const inspectionPanel = document.getElementById("qni-inspection-panel");
+    if (inspectionPanel && !inspectionPanel.classList.contains("hidden")) {
+      this.dismissDetails();
+      return;
+    }
+    this.selected = true;
+    this.updateProbabilityCircle();
+    this.updateBorder();
+    const canvas = event.nativeEvent.target as HTMLCanvasElement;
+    const canvasRect = canvas.getBoundingClientRect();
+    const bounds = this.getBounds();
+    window.dispatchEvent(
+      new CustomEvent("qni-state-cell-hover", {
+        detail: {
+          index: this.basisIndex,
+          qubitCount: this.qubitCount,
+          amplitude: this.amplitude,
+          anchorX: canvasRect.left + bounds.x + bounds.width / 2,
+          anchorY: canvasRect.top + bounds.y + bounds.height / 2,
+          anchorRadius: bounds.height / 2,
+        },
+      }),
+    );
+  }
+
+  private hideDetails(): void {
+    this.selected = false;
+    this.updateProbabilityCircle();
+    this.updateBorder();
+    window.dispatchEvent(new Event("qni-state-cell-leave"));
+  }
+
+  private dismissDetails(): void {
+    this.selected = false;
+    this.updateProbabilityCircle();
+    this.updateBorder();
+    window.dispatchEvent(new Event("qni-state-cell-dismiss"));
   }
 
   get probability(): number {
@@ -93,6 +154,7 @@ export class QubitCircle extends Container {
 
     this._size = newValue;
 
+    this.updateHitArea();
     this.updateProbabilityCircle();
     this.updateBorder();
     this.updatePhaseHand();
@@ -140,7 +202,7 @@ export class QubitCircle extends Container {
         .clear()
         .circle(this.sizeInPx / 2, this.sizeInPx / 2, this.sizeInPx / 2)
         .fill({
-          color: Colors["bg-brand"],
+          color: this.probabilityColor(),
           alpha: Math.max(
             this._approximate ? 0.12 : 0.08,
             this.probability / 100
@@ -156,7 +218,7 @@ export class QubitCircle extends Container {
     this.probabilityCircle
       .clear()
       .circle(this.sizeInPx / 2, this.sizeInPx / 2, radius)
-      .fill(Colors["bg-brand"]);
+      .fill(this.probabilityColor());
 
     this.showProbabilityCircle();
   }
@@ -203,6 +265,7 @@ export class QubitCircle extends Container {
   }
 
   private borderColor(): string {
+    if (this.selected) return Colors["border-component-selected"];
     return this.probability === 0
       ? Colors["border-component-strong-disabled"]
       : Colors["border-component-strong"];
@@ -268,6 +331,15 @@ export class QubitCircle extends Container {
 
   private get renderedSizeInPx(): number {
     return this.sizeInPx * this._displayScale;
+  }
+
+  private probabilityColor(): string {
+    return this.selected ? Colors["bg-brand-hover"] : Colors["bg-brand"];
+  }
+
+  private updateHitArea(): void {
+    const radius = this.sizeInPx / 2;
+    this.hitArea = new Circle(radius, radius, radius);
   }
 
   private shouldUseCompactApproximation(): boolean {

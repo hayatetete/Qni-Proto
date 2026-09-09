@@ -1,7 +1,10 @@
 from dataclasses import dataclass, field
+import json
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
+from quri_parts.circuit import QuantumCircuit
 
 from qni_jupyter import qni
 
@@ -238,6 +241,157 @@ def test_inspection_height_includes_both_panes_and_notebook_chrome() -> None:
     )
 
 
+def test_checkpoint_validates_and_serializes_probability_and_amplitude() -> None:
+    checkpoint = qni.QniCheckpoint(
+        "phase oracle",
+        3,
+        {"111": 0.25},
+        expected_amplitudes={"111": (-0.5, 0)},
+        source="build_oracle(): Z gate",
+    )
+
+    assert checkpoint.to_json() == {
+        "name": "phase oracle",
+        "step": 3,
+        "expected_probabilities": {"111": 0.25},
+        "expected_amplitudes": {"111": [-0.5, 0.0]},
+        "tolerance": 1e-6,
+        "source": "build_oracle(): Z gate",
+    }
+
+
+def test_checkpoint_last_resolves_to_the_final_boundary() -> None:
+    circuit = QuantumCircuit(2)
+    circuit.add_H_gate(0)
+    circuit.add_CNOT_gate(0, 1)
+
+    try:
+        viewer = qni.show_circuit_and_state(
+            circuit,
+            checkpoints=[
+                qni.QniCheckpoint(
+                    "final Bell state", "last", {"00": 0.5, "11": 0.5}
+                )
+            ],
+            display=False,
+        )
+
+        assert viewer is not None
+        state = json.loads(parse_qs(urlparse(viewer.url).query)["state"][0])
+        assert state["checkpoints"][0]["step"] == 2
+    finally:
+        qni.close()
+
+
+def test_inspection_step_uses_state_boundary_numbers() -> None:
+    steps = [
+        [{"type": "H", "targets": [0]}],
+        [{"type": "X", "targets": [1], "controls": [0]}],
+    ]
+
+    assert qni._resolve_active_step_index(
+        0, steps, include_initial_boundary=True
+    ) == 0
+    assert qni._resolve_active_step_index(
+        2, steps, include_initial_boundary=True
+    ) == 2
+    assert qni._resolve_active_step_index(
+        "last", steps, include_initial_boundary=True
+    ) == 2
+
+
+def test_circuit_only_step_keeps_gate_index_numbers() -> None:
+    steps = [
+        [{"type": "H", "targets": [0]}],
+        [{"type": "X", "targets": [1], "controls": [0]}],
+    ]
+
+    assert qni._resolve_active_step_index("last", steps) == 1
+    with pytest.raises(ValueError, match="out of range"):
+        qni._resolve_active_step_index(2, steps)
+
+
+@pytest.mark.parametrize("bits", ["", "012"])
+def test_checkpoint_rejects_invalid_bitstrings(bits: str) -> None:
+    with pytest.raises(ValueError, match="Invalid checkpoint bitstring"):
+        qni.QniCheckpoint("bad", 0, {bits: 1}).to_json()
+
+
+def test_show_circuit_forwards_inspection_metadata() -> None:
+    circuit = FakeCircuit(2, [FakeGate("H", (0,))])
+    checkpoint = qni.QniCheckpoint("prepared", 1, {"00": 0.5})
+
+    with patch.object(qni, "open", return_value=None) as open_view:
+        qni.show_circuit_and_state(
+            circuit,
+            height=300,
+            checkpoints=[checkpoint],
+            qubit_names=["control", "target"],
+        )
+
+    assert open_view.call_args.kwargs["checkpoints"] == [checkpoint]
+    assert open_view.call_args.kwargs["qubit_names"] == ["control", "target"]
+
+
+def test_quri_code_steps_retain_python_source_line() -> None:
+    steps, qubit_count, warnings = qni.quri_code_to_steps(
+        "from quri_parts.circuit import QuantumCircuit\n"
+        "circuit = QuantumCircuit(2)\n"
+        "circuit.add_H_gate(0)\n"
+    )
+
+    assert qubit_count == 2
+    assert warnings == ()
+    assert steps[0][0]["source"] == {
+        "line": 3,
+        "code": "circuit.add_H_gate(0)",
+        "scope": "module",
+    }
+
+
+def test_quri_code_expands_called_function_loop_with_source_scope() -> None:
+    steps, qubit_count, warnings = qni.quri_code_to_steps(
+        "from quri_parts.circuit import QuantumCircuit\n"
+        "def build():\n"
+        "    circuit = QuantumCircuit(3)\n"
+        "    for qubit in range(3):\n"
+        "        circuit.add_H_gate(qubit)\n"
+        "    return circuit\n"
+        "circuit = build()\n"
+    )
+
+    assert qubit_count == 3
+    assert warnings == ()
+    assert [step[0]["targets"] for step in steps] == [[0], [1], [2]]
+    assert [step[0]["source"]["scope"] for step in steps] == [
+        "module > build() > for qubit=0",
+        "module > build() > for qubit=1",
+        "module > build() > for qubit=2",
+    ]
+    assert all(step[0]["source"]["line"] == 5 for step in steps)
+
+
+def test_quri_code_does_not_expand_an_uncalled_helper() -> None:
+    steps, qubit_count, warnings = qni.quri_code_to_steps(
+        "from quri_parts.circuit import QuantumCircuit\n"
+        "def unused():\n"
+        "    helper = QuantumCircuit(2)\n"
+        "    helper.add_X_gate(1)\n"
+        "circuit = QuantumCircuit(2)\n"
+        "circuit.add_H_gate(0)\n"
+    )
+
+    assert qubit_count == 2
+    assert warnings == ()
+    assert len(steps) == 1
+    assert steps[0][0]["type"] == "H"
+
+
+def test_steps_api_rejects_qubits_outside_initial_demo_scope() -> None:
+    with pytest.raises(ValueError, match="qubits 0-7"):
+        qni.open(steps=[[{"type": "X", "targets": [8]}]], display=False)
+
+
 @pytest.mark.parametrize(
     ("qubit_count", "visible_wire_rows"),
     [(4, 4), (5, 7), (6, 8), (7, 10), (8, 11)],
@@ -295,17 +449,17 @@ def test_non_identity_measurement_mapping_stops_visualization() -> None:
 
 
 def test_qubit_limit_is_enforced_before_starting_servers() -> None:
-    with pytest.raises(ValueError, match="supports 1-32 qubits"):
-        qni.open(steps=[[]], qubit_count=33, display=False)
+    with pytest.raises(ValueError, match="supports 1-8 qubits"):
+        qni.open(steps=[[]], qubit_count=9, display=False)
 
 
-def test_32_qubit_input_is_accepted_before_simulation() -> None:
+def test_8_qubit_input_is_accepted_before_simulation() -> None:
     with (
         patch.object(qni, "_backend_server") as backend_server,
         patch.object(qni, "_server") as frontend_server,
     ):
         backend_server.return_value.port = 8000
         frontend_server.return_value.port = 5173
-        viewer = qni.open(steps=[[]], qubit_count=32, display=False)
+        viewer = qni.open(steps=[[]], qubit_count=8, display=False)
 
     assert isinstance(viewer, qni.QniViewer)

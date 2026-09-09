@@ -24,16 +24,20 @@ export type BorderColorKey =
   | "border-active"
   | "border-component"
   | "border-component-strong"
+  | "border-component-selected"
   | "border-component-strong-disabled"
   | "border-inverse";
 
 export type IconColorKey = "icon-brand" | "icon-onbrand";
 
+export type StatusColorKey = "status-success" | "status-error";
+
 export type ColorKey =
   | BgColorKey
   | TextColorKey
   | BorderColorKey
-  | IconColorKey;
+  | IconColorKey
+  | StatusColorKey;
 
 export const Colors: { [key in ColorKey]: string } = {
   bg: tailwindColors.zinc["50"],
@@ -49,10 +53,13 @@ export const Colors: { [key in ColorKey]: string } = {
   "border-active": tailwindColors.teal["300"],
   "border-component": tailwindColors.zinc["400"],
   "border-component-strong": tailwindColors.zinc["500"],
+  "border-component-selected": tailwindColors.zinc["600"],
   "border-component-strong-disabled": tailwindColors.zinc["200"],
   "border-inverse": tailwindColors.zinc["300"],
   "icon-brand": tailwindColors.sky["500"],
   "icon-onbrand": tailwindColors.white,
+  "status-success": "#10b981",
+  "status-error": tailwindColors.red["600"],
 };
 
 export type WireColor =

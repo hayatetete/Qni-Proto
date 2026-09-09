@@ -1,0 +1,280 @@
+#inspection-step-control {
+  --inspection-step-hover-progress: 0;
+  position: relative;
+  height: 64px;
+  padding: 0 13px;
+  user-select: none;
+}
+
+#inspection-step-control[data-representative-scale="true"] {
+  height: 76px;
+}
+
+#inspection-step-value {
+  position: absolute;
+  top: 6px;
+  right: 13px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #3f3f46;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+#inspection-step-number {
+  width: 38px;
+  height: 22px;
+  padding: 0 4px;
+  appearance: textfield;
+  border: 0;
+  border-radius: 5px;
+  background: #18181b;
+  color: white;
+  font: inherit;
+  text-align: center;
+  outline: none;
+}
+
+#inspection-step-number:focus {
+  box-shadow: 0 0 0 2px #a855f7;
+}
+
+#inspection-step-number::-webkit-inner-spin-button,
+#inspection-step-number::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+#inspection-step-track,
+#inspection-step-ticks,
+#inspection-step-labels {
+  position: absolute;
+  right: 16.5px;
+  left: 16.5px;
+  pointer-events: none;
+}
+
+#inspection-step-track {
+  top: 39px;
+  height: 9px;
+  border-radius: 9999px;
+  background: #c4c4c4;
+}
+
+#inspection-step-ticks {
+  top: 35px;
+  z-index: 15;
+  height: 17px;
+}
+
+#inspection-step-ticks>span {
+  position: absolute;
+  top: 0;
+  height: 17px;
+  border-radius: 9999px;
+  background: #c4c4c4;
+  transform: translateX(-50%);
+}
+
+#inspection-step-ticks>span[data-active="true"] {
+  background: #0ea5e9;
+}
+
+#inspection-step-labels {
+  top: 57px;
+  height: 14px;
+  color: #666;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+#inspection-step-labels>span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+#inspection-step-labels>span:first-child {
+  transform: none;
+}
+
+#inspection-step-labels>span:last-child {
+  transform: translateX(-100%);
+}
+
+#inspection-step-hover {
+  position: absolute;
+  top: 35px;
+  left: calc(16.5px + var(--inspection-step-hover-progress) * (100% - 33px));
+  z-index: 16;
+  width: 5px;
+  height: 17px;
+  background: #0284c7;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+#inspection-step-hover[hidden] {
+  display: none;
+}
+
+#inspection-step-slider {
+  position: absolute;
+  top: 33px;
+  right: 13px;
+  left: 13px;
+  z-index: 10;
+  height: 20px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+#inspection-step-slider::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+
+#inspection-step-slider::-webkit-slider-thumb {
+  width: 7px;
+  height: 20px;
+  margin-top: 0;
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  background: #0ea5e9;
+}
+
+#inspection-step-slider::-moz-range-track {
+  height: 20px;
+  background: transparent;
+}
+
+#inspection-step-slider::-moz-range-thumb {
+  width: 7px;
+  height: 20px;
+  border: 0;
+  border-radius: 0;
+  background: #0ea5e9;
+}
+
+#inspection-step-slider:focus-visible {
+  border-radius: 9999px;
+  outline: 2px solid #0369a1;
+  outline-offset: 2px;
+}
+
+.inspection-status-pass {
+  color: var(--inspection-success, #10b981);
+}
+
+.inspection-status-fail {
+  color: var(--inspection-error, #dc2626);
+}
+
+.inspection-basis-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.inspection-state-table {
+  table-layout: fixed;
+}
+
+.inspection-state-table th,
+.inspection-state-table td {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inspection-basis-decimal {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  color: #a1a1aa;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.inspection-basis-decimal sub {
+  align-self: flex-end;
+  color: #71717a;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.inspection-probability-track {
+  height: 8px;
+  min-width: 48px;
+  flex: 1;
+  overflow: hidden;
+  background: #e4e4e7;
+}
+
+.inspection-probability-fill {
+  height: 100%;
+  border-radius: 0;
+  background: var(--inspection-brand, #0ea5e9);
+}
+
+.inspection-phase-icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  vertical-align: middle;
+}
+
+.inspection-phase-sector {
+  fill: var(--inspection-brand, #0ea5e9);
+  opacity: .45;
+}
+
+.inspection-failure-table th,
+.inspection-failure-table td {
+  padding: 4px 6px;
+  border-top: 1px solid #e4e4e7;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.inspection-failure-table th:first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.inspection-failure-table thead th {
+  border-top: 0;
+  color: #71717a;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .inspection-basis-label {
+    display: block;
+    line-height: 1.1;
+  }
+
+  .inspection-basis-decimal {
+    display: block;
+    margin-top: 2px;
+  }
+
+  .inspection-state-table {
+    font-size: 10px;
+  }
+
+  .inspection-state-table th,
+  .inspection-state-table td {
+    padding-right: 3px;
+  }
+}

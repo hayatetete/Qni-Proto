@@ -5,14 +5,14 @@ import { dirname, resolve } from "node:path";
 import { chromium } from "playwright";
 
 const outputPath = resolve(
-  process.argv[2] ?? "../doc/screenshot/qni-tutorial-executed-output.png",
+  process.argv[2] ?? "../doc/screenshot/qni-demo-executed-output.png",
 );
 const jupyterUrl =
   process.env.QNI_JUPYTER_URL ??
   "http://127.0.0.1:18888/lab/tree/qni_demo.ipynb";
 const targetSource =
   process.env.QNI_TARGET_SOURCE ??
-  "qni.show_circuit_and_state(state_preparation_circuit)";
+  "all_green_checkpoints = [";
 const notebookName = decodeURIComponent(
   new URL(jupyterUrl).pathname.split("/").at(-1) ?? "",
 );
@@ -51,6 +51,12 @@ try {
     { timeout: 30_000 },
   );
   await page.waitForTimeout(1_000);
+  await page.locator(".jp-toastContainer").evaluateAll((notifications) =>
+    notifications.forEach((notification) => notification.remove()),
+  );
+  await viewerFrame.getByText("All checkpoints passed", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.waitForTimeout(100);
   await viewerFrame.evaluate(async () => {
     const canvas = document.querySelector("canvas");
     if (!(canvas instanceof HTMLCanvasElement)) return;
@@ -65,7 +71,7 @@ try {
   });
   await page.waitForTimeout(100);
 
-  await outputCell.screenshot({ path: outputPath });
+  await iframe.screenshot({ path: outputPath });
 
   const viewerUrl = await iframe.getAttribute("src");
   if (!viewerUrl) throw new Error("QniNotebook viewer URL was not generated");
