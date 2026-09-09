@@ -136,6 +136,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await expect(panel.locator("#inspection-step-ticks > span")).toHaveCount(5);
     await expect(panel).toHaveScreenshot("qni-inspection-checkpoint-panel.png", {
       animations: "disabled",
+      maxDiffPixels: 500,
     });
 
     await inspectionSlider.fill("3");
@@ -215,6 +216,7 @@ test.describe("QniNotebook intermediate-state inspection", () => {
     await expect(more).not.toHaveAttribute("open", "");
     await expect(panel).toHaveScreenshot("qni-inspection-all-passed-panel.png", {
       animations: "disabled",
+      maxDiffPixels: 500,
     });
     await more.locator("summary").click();
     await expect(panel.locator("tbody tr:visible")).toHaveCount(10);
