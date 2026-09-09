@@ -13,18 +13,19 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.10"
           cache: pip
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
+          package-manager-cache: false
 
       - name: Enable Corepack
         run: corepack enable
@@ -48,5 +49,52 @@ jobs:
         working-directory: frontend
         run: yarn test:unit
 
+      - name: Test QniNotebook display modes
+        working-directory: frontend
+        run: >-
+          yarn playwright test
+          test/playwright/notebook-state-inspection.spec.ts
+          --project=chromium
+
+      - name: Upload Playwright failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-failure-${{ github.run_attempt }}
+          path: |
+            frontend/test-results
+            frontend/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Run Python and backend tests
         run: python -m pytest tests backend/tests
+
+      - name: Build reproducible demo image
+        run: docker compose -f compose.demo.yml build
+
+      - name: Execute the demo notebook in the image
+        run: >-
+          docker compose -f compose.demo.yml run --rm
+          qni-notebook-demo
+          jupyter execute --inplace qni_demo.ipynb
+
+      - name: Open the executed notebook and verify its Qni iframe
+        run: |
+          mkdir -p frontend/test-results
+          docker compose -f compose.demo.yml up -d
+          docker compose -f compose.demo.yml exec -T qni-notebook-demo jupyter trust qni_demo.ipynb
+          node frontend/script/verify-docker-demo.mjs
+
+      - name: Stop demo services
+        if: always()
+        run: docker compose -f compose.demo.yml down --volumes
+
+      - name: Upload Docker demo failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docker-demo-failure-${{ github.run_attempt }}
+          path: frontend/test-results/docker-demo-notebook.png
+          if-no-files-found: ignore
+          retention-days: 7

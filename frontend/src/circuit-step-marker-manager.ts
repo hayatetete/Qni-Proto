@@ -73,6 +73,10 @@ export class CircuitStepMarkerManager extends Container {
       event.stopPropagation();
       this.stepAt(index).activate();
     });
+    // Notebook navigation made the marker interactive after the original
+    // whole-column hover was implemented. Keep it from becoming a dead strip.
+    marker.on("pointerover", () => this.stepAt(index).setHovered(true));
+    marker.on("pointerout", () => this.stepAt(index).setHovered(false));
     return marker;
   }
 

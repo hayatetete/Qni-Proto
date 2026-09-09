@@ -1,6 +1,8 @@
 import { App } from "./app";
 import { SerializedOperation } from "./types";
 import { generateQuriCode } from "./quri-code-generator";
+import { mountStepSlider } from "./step-slider";
+import { setupInspectionPanel, type InspectionCheckpoint } from "./inspection-panel";
 
 type JupyterInitialState = {
   steps?: SerializedOperation[][];
@@ -8,16 +10,21 @@ type JupyterInitialState = {
   title?: string;
   view?: JupyterViewMode;
   active_step_index?: number;
+  focus_active_step?: boolean;
   editable?: boolean;
   draft_id?: string;
   backendUrl?: string;
+  simulation_seed?: number;
+  checkpoints?: InspectionCheckpoint[];
+  qubit_names?: string[];
 };
 
 type CircuitJson = {
-  cols: (string | null)[][];
+  cols: unknown[][];
   qubitCount: number;
   title?: string;
   activeStepIndex?: number;
+  focusActiveStep?: boolean;
   editable?: boolean;
 };
 
@@ -36,10 +43,25 @@ export function loadJupyterInitialState(app: App): void {
   }
 
   app.setJupyterViewMode(state.view ?? "notebook");
+  if (state.simulation_seed !== undefined) {
+    app.setSimulationSeed(state.simulation_seed);
+  }
+  if (state.backendUrl) {
+    app.setSimulationBackendUrl(state.backendUrl);
+  }
   app.loadCircuitJson({
     ...toCircuitJson(state),
     editable: state.editable,
   });
+  if ((state.view ?? "notebook") === "notebook") mountStepSlider(app);
+  if ((state.view ?? "notebook") !== "circuit") {
+    setupInspectionPanel(
+      app,
+      state.checkpoints ?? [],
+      state.steps ?? [],
+      state.qubit_names ?? [],
+    );
+  }
   setupEditorDraftSync(app, state);
 }
 
@@ -188,6 +210,20 @@ function parseInitialStateFromUrl(): JupyterInitialState | null {
   ) {
     throw new Error("Jupyter initial state active_step_index is invalid.");
   }
+  if (
+    parsed.focus_active_step !== undefined &&
+    typeof parsed.focus_active_step !== "boolean"
+  ) {
+    throw new Error("Jupyter initial state focus_active_step is invalid.");
+  }
+  if (
+    parsed.simulation_seed !== undefined &&
+    (!Number.isInteger(parsed.simulation_seed) ||
+      parsed.simulation_seed < 0 ||
+      parsed.simulation_seed > 0xffffffff)
+  ) {
+    throw new Error("Jupyter initial state simulation_seed is invalid.");
+  }
 
   return parsed;
 }
@@ -214,17 +250,26 @@ export function jupyterViewModeFromUrl(): JupyterViewMode {
 export function toCircuitJson(state: JupyterInitialState): CircuitJson {
   const steps = state.steps ?? [];
   const qubitCount = requiredQubitCount(steps, state.qubit_count);
-  const cols =
-    steps.length === 0
-      ? [emptyColumn(qubitCount)]
-      : steps.map((step) => stepToColumn(step, qubitCount));
+  // Read-only inspection exposes the state before the first gate as boundary 0.
+  // Subsequent boundary numbers then mean "after N circuit steps".
+  const inspectInitialState = state.editable === false && state.view !== "circuit";
+  const cols = [
+    ...(inspectInitialState ? [emptyColumn(qubitCount)] : []),
+    ...(steps.length === 0
+      ? inspectInitialState
+        ? []
+        : [emptyColumn(qubitCount)]
+      : steps.map((step) => stepToColumn(step, qubitCount))),
+  ];
+  const activeStepIndex = state.active_step_index ?? 0;
 
   return {
     cols,
     qubitCount,
     ...(state.title ? { title: state.title } : {}),
-    ...(state.active_step_index !== undefined
-      ? { activeStepIndex: state.active_step_index }
+    activeStepIndex,
+    ...(state.focus_active_step !== undefined
+      ? { focusActiveStep: state.focus_active_step }
       : {}),
     ...(state.editable !== undefined ? { editable: state.editable } : {}),
   };
@@ -257,7 +302,7 @@ function requiredQubitCount(
 function stepToColumn(
   step: SerializedOperation[],
   qubitCount: number,
-): (string | null)[] {
+): unknown[] {
   const column = emptyColumn(qubitCount);
 
   for (const operation of step) {
@@ -268,7 +313,10 @@ function stepToColumn(
       column[antiControl] = "◦";
     }
     for (const target of operation.targets) {
-      column[target] = labelForOperation(operation);
+      const label = labelForOperation(operation);
+      column[target] = operation.angle
+        ? [label, { angle: operation.angle }]
+        : label;
     }
   }
 
@@ -287,6 +335,6 @@ function labelForOperation(operation: SerializedOperation): string {
   return operation.type;
 }
 
-function emptyColumn(qubitCount: number): null[] {
+function emptyColumn(qubitCount: number): unknown[] {
   return Array.from({ length: qubitCount }, () => null);
 }

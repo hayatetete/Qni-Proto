@@ -4,7 +4,7 @@ import {
 } from "./events";
 import { DropzoneList } from "./dropzone-list";
 import { CircuitStepState } from "./circuit-step-state";
-import { Container } from "pixi.js";
+import { Container, Rectangle } from "pixi.js";
 import { AntiControlGate } from "./anti-control-gate";
 import { BlochSphere } from "./bloch-sphere";
 import { Dropzone } from "./dropzone";
@@ -242,11 +242,21 @@ export class CircuitStep extends Container {
     this.state.setIdle();
   }
 
+  setHovered(hovered: boolean): void {
+    if (hovered && this.state.isIdle()) {
+      this.state.setHover();
+    } else if (!hovered && this.state.isHover()) {
+      this.state.setIdle();
+    }
+    this.emit(CIRCUIT_STEP_EVENTS.HOVERED, this);
+  }
+
   setPresentationMode(enabled: boolean): void {
     // Read-only presentation still allows selecting a step so that the
-    // existing vertical step marker can drive state-vector inspection.
+    // original whole-column hover can drive state-vector inspection.
     this.eventMode = "static";
     this.interactiveChildren = !enabled;
+    this.hitArea = enabled ? new Rectangle(0, 0, this.width, this.height) : null;
     this.dropzones.forEach((dropzone) => dropzone.setPresentationMode(enabled));
   }
 
@@ -364,6 +374,22 @@ export class CircuitStep extends Container {
     while (ops.length < requiredWireCount) {
       ops.push(null);
     }
+
+    // Notebook URLから渡された数値回転角を、復元したゲートへ保持する。
+    stepJson.forEach((state, index) => {
+      if (!Array.isArray(state) || typeof state[1] !== "object" || !state[1]) {
+        return;
+      }
+      const angle = (state[1] as { angle?: unknown }).angle;
+      const operation = ops[index];
+      if (
+        typeof angle === "string" &&
+        operation &&
+        "rotationAngle" in operation
+      ) {
+        operation.rotationAngle = angle;
+      }
+    });
 
     // 旧 Qni の "QFT3" / "QFT†3" を、現行の隣接 QFT 配置へ展開する。
     labels.forEach((label, index) => {
@@ -738,5 +764,6 @@ export class CircuitStep extends Container {
     if (this.state.isHover()) {
       this.state.setIdle();
     }
+    this.emit(CIRCUIT_STEP_EVENTS.HOVERED, this);
   }
 }

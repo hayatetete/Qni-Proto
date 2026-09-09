@@ -6,6 +6,8 @@ in the Qni simulator.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,18 +23,18 @@ class CachedQiskitRunner:
     """A caching wrapper for the QiskitRunner.
 
     Implements a caching layer to optimize repeated circuit executions by:
-    - Storing results based on circuit ID and step index
+    - Storing all step results for one viewer execution
     - Managing cache invalidation
     - Delegating actual execution to QiskitRunner
 
-    The cache is invalidated when either the circuit ID or step index changes,
-    ensuring that modified circuits are properly re-executed.
+    The selected step is intentionally not part of the key, so moving between
+    step boundaries reuses one simulation run.
 
     Attributes
     ----------
         logger: Logger instance for tracking cache hits/misses
         cache: List of cached quantum circuit results
-        last_cache_key: Tuple of (circuit_id, step_index) for the last execution
+        last_cache_key: Circuit fingerprint and viewer seed for the last execution
 
     """
 
@@ -51,7 +53,7 @@ class CachedQiskitRunner:
     def run(self, request_data: CircuitRequestData) -> list[QiskitStepResult]:
         """Execute quantum circuit with caching optimization.
 
-        Returns cached results if available for the given circuit_id and step_index
+        Returns cached results if available for the circuit and viewer seed
         combination. Otherwise, executes the circuit using QiskitRunner, caches the
         results, and returns them.
 
@@ -67,11 +69,25 @@ class CachedQiskitRunner:
 
         Note:
         ----
-            Cache key is a tuple of (circuit_id, until_step_index). Cache is invalidated
-            when either circuit_id or until_step_index changes.
+            The step index is not part of the key because one run stores every
+            step boundary.
 
         """
-        cache_key = (request_data.circuit_id, request_data.until_step_index)
+        circuit_fingerprint = hashlib.sha256(
+            json.dumps(
+                {
+                    "steps": request_data.steps,
+                    "qubit_count": request_data.qubit_count,
+                    "device": request_data.device.value,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+        ).hexdigest()
+        cache_key = (
+            circuit_fingerprint,
+            request_data.simulation_seed,
+        )
 
         if self.last_cache_key == cache_key:
             self.logger.info("Cache hit for circuit_key: %s", cache_key)
@@ -84,6 +100,7 @@ class CachedQiskitRunner:
             qubit_count=request_data.qubit_count,
             until_step_index=request_data.until_step_index,
             device=request_data.device,
+            simulation_seed=request_data.simulation_seed,
         )
         self.cache = step_results
         self.last_cache_key = cache_key

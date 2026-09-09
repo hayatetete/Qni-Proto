@@ -63,6 +63,26 @@ describe("Circuit", () => {
     });
   });
 
+  describe("setStepMarkersVisible", () => {
+    it("toggles the step-boundary markers", () => {
+      circuit.setStepMarkersVisible(false);
+      expect(circuit.stepMarkersVisible).toBe(false);
+
+      circuit.setStepMarkersVisible(true);
+      expect(circuit.stepMarkersVisible).toBe(true);
+    });
+  });
+
+  describe("compactForPresentation", () => {
+    it("preserves the active calculation boundary", () => {
+      circuit.fetchStep(2).activate();
+
+      circuit.compactForPresentation();
+
+      expect(circuit.activeStepIndex).toBe(0);
+    });
+  });
+
   describe("wireCount", () => {
     it("returns the correct number of wires", () => {
       expect(circuit.wireCount).toBe(3);

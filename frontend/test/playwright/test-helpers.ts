@@ -1,7 +1,6 @@
 import { fail } from "assert";
-import { Page } from "playwright/test";
-import { OperationComponent } from "../../src";
-import { Container, Point } from "pixi.js";
+import type { Page } from "playwright/test";
+import type { Container } from "pixi.js";
 
 export async function appData(page: Page) {
   const appEl = page.locator("#app");
@@ -12,10 +11,6 @@ export async function appData(page: Page) {
   }
 
   return JSON.parse(dataApp);
-}
-
-export function centerPosition(gate: OperationComponent) {
-  return new Point(gate.x + gate.width / 2, gate.y + gate.height / 2);
 }
 
 interface CircuitInfo {

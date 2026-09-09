@@ -3,6 +3,10 @@ export const CIRCUIT_STEP_EVENTS = {
   HOVERED: "circuit-step.hovered",
 } as const;
 
+export const CIRCUIT_EVENTS = {
+  STEPS_CHANGED: "circuit.steps-changed",
+} as const;
+
 export const OPERATION_EVENTS = {
   GRABBED: "operation.grabbed",
   SNAPPED: "operation.snapped",

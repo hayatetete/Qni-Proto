@@ -14,6 +14,7 @@ type SerializableOperationComponent = OperationComponent & {
 
 export declare class AngleGate {
   get rotationAngle(): string;
+  set rotationAngle(value: string);
   serialize(
     targetBits: number[],
     controlBits?: number[],
@@ -27,11 +28,15 @@ export function AngleGateMixin<
   Base: TBase
 ): Constructor<AngleGate> & TBase {
   return class AngleGateMixinClass extends Base {
-    /**
-     * 角度入力 UI が未実装のため、回転系ゲートは既定角を使う。
-     */
+    private _rotationAngle = DEFAULT_ROTATION_ANGLE;
+
+    /** Notebookから復元した角度。未指定時だけ既定角を使う。 */
     get rotationAngle(): string {
-      return DEFAULT_ROTATION_ANGLE;
+      return this._rotationAngle;
+    }
+
+    set rotationAngle(value: string) {
+      this._rotationAngle = value;
     }
 
     /**

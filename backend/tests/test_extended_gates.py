@@ -9,6 +9,71 @@ def test_anti_controlled_x_flips_when_control_is_zero():
     assert pytest.approx(result[0]["amplitudes"][2].real) == 1
 
 
+def test_x_gate_changes_basis_state_without_adding_phase():
+    result = QiskitRunner().run_circuit(
+        [[{"type": "X", "targets": [0, 1, 2, 3, 4]}]],
+        qubit_count=5,
+    )
+
+    amplitude = result[0]["amplitudes"][31]
+    assert amplitude.real == pytest.approx(1)
+    assert amplitude.imag == pytest.approx(0)
+
+
+def test_later_multi_controlled_gate_does_not_shift_earlier_snapshot_phase():
+    result = QiskitRunner().run_circuit(
+        [
+            [{"type": "X", "targets": [0, 1, 2, 3, 4]}],
+            [
+                {
+                    "type": "Z",
+                    "targets": [0],
+                    "controls": [1, 3, 4],
+                    "antiControls": [2],
+                },
+            ],
+            [
+                {
+                    "type": "X",
+                    "targets": [4],
+                    "controls": [0, 1, 2, 3],
+                },
+            ],
+        ],
+        qubit_count=5,
+    )
+
+    amplitude_after_x = result[0]["amplitudes"][31]
+    assert amplitude_after_x.real == pytest.approx(1)
+    assert amplitude_after_x.imag == pytest.approx(0)
+
+
+def test_mixed_controls_and_anti_control_apply_phase_only_to_matching_state():
+    oracle = {
+        "type": "Z",
+        "targets": [0],
+        "controls": [1, 3, 4],
+        "antiControls": [2],
+    }
+    matching = QiskitRunner().run_circuit(
+        [
+            [{"type": "X", "targets": [0, 1, 3, 4]}],
+            [oracle],
+        ],
+        qubit_count=5,
+    )
+    anti_control_not_satisfied = QiskitRunner().run_circuit(
+        [
+            [{"type": "X", "targets": [0, 1, 2, 3, 4]}],
+            [oracle],
+        ],
+        qubit_count=5,
+    )
+
+    assert matching[1]["amplitudes"][27].real == pytest.approx(-1)
+    assert anti_control_not_satisfied[1]["amplitudes"][31].real == pytest.approx(1)
+
+
 def test_phase_gate_applies_pi_phase():
     runner = QiskitRunner()
     result = runner.run_circuit(

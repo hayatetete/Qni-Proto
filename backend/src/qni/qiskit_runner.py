@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from qiskit.result import Result  # type: ignore[import-untyped]
 
 from qiskit import QuantumCircuit, transpile  # type: ignore[import-untyped]
+from qiskit.quantum_info import Statevector  # type: ignore[import-untyped]
 from qiskit_aer import AerSimulator  # type: ignore[import-untyped]
 
 from qni.qiskit_circuit_builder import QiskitCircuitBuilder
@@ -28,6 +29,18 @@ from qni.types import (
     QiskitStepAmplitudes,
     QiskitStepResult,
 )
+
+MAX_SIMULATION_SECONDS = 10
+
+
+class SimulationTimeoutError(TimeoutError):
+    """Raised when the bounded demo simulation exceeds its execution limit."""
+
+    def __init__(self) -> None:
+        """Initialize the timeout with the public demo limit."""
+        super().__init__(
+            f"Simulation exceeded the {MAX_SIMULATION_SECONDS}-second demo limit."
+        )
 
 
 class BasicOperation(TypedDict):
@@ -91,7 +104,7 @@ class QiskitRunner:
 
     """
 
-    _STATEVECTOR_LABEL = "state_at_until_step"
+    _STATEVECTOR_LABEL_PREFIX = "state_at_step_"
     _BLOCH_STATEVECTOR_LABEL_PREFIX = "state_at_bloch_step_"
 
     def __init__(self, logger: logging.Logger | None = None) -> None:
@@ -114,6 +127,7 @@ class QiskitRunner:
         qubit_count: int | None = None,
         until_step_index: int | None = None,
         device: DeviceType = DeviceType.CPU,
+        simulation_seed: int | None = None,
     ) -> list[QiskitStepResult]:
         """Execute the specified quantum circuit and return the results of each step.
 
@@ -135,6 +149,8 @@ class QiskitRunner:
         step_results: list[QiskitStepResult] = []
 
         self.steps = steps
+        if until_step_index is None:
+            until_step_index = self._last_step_index()
         self.circuit = self._build_circuit(
             qubit_count=qubit_count,
             until_step_index=until_step_index,
@@ -143,30 +159,30 @@ class QiskitRunner:
         if self.circuit.depth() == 0:
             return step_results
 
-        result = self._run_backend(device=device)
-        statevector = self._get_statevector(result, self._STATEVECTOR_LABEL)
+        result = self._run_backend(device=device, simulation_seed=simulation_seed)
+        phase_corrections = self._snapshot_phase_corrections(result)
+        statevectors = [
+            self._get_statevector(
+                result,
+                self._statevector_label(step_index),
+                phase_correction=phase_corrections[step_index],
+            )
+            for step_index in range(len(self.steps))
+        ]
         measured_bits = self._extract_measurement_results(result)
-        bloch_vectors = self._bloch_vectors_by_step(result, statevector)
-
-        if until_step_index is None:
-            until_step_index = self._last_step_index()
+        bloch_vectors = self._bloch_vectors_by_step(
+            result,
+            statevectors[until_step_index],
+        )
 
         for step_index in range(len(self.steps)):
-            if step_index == until_step_index:
-                step_results.append(
-                    QiskitStepResult(
-                        measuredBits=measured_bits[step_index],
-                        amplitudes=statevector,
-                        blochVectors=bloch_vectors[step_index],
-                    ),
-                )
-            else:
-                step_results.append(
-                    QiskitStepResult(
-                        measuredBits=measured_bits[step_index],
-                        blochVectors=bloch_vectors[step_index],
-                    ),
-                )
+            step_results.append(
+                QiskitStepResult(
+                    measuredBits=measured_bits[step_index],
+                    amplitudes=statevectors[step_index],
+                    blochVectors=bloch_vectors[step_index],
+                ),
+            )
 
         return step_results
 
@@ -235,33 +251,95 @@ class QiskitRunner:
             for operation in step:
                 circuit_builder.apply_operation(circuit, operation)
 
-            if step_index == until_step_index:
-                circuit.save_statevector(label=self._STATEVECTOR_LABEL)
+            circuit.save_statevector(label=self._statevector_label(step_index))
             if self._step_has_bloch_display(step):
                 circuit.save_statevector(label=self._bloch_statevector_label(step_index))
 
         return circuit
 
-    def _run_backend(self, device: DeviceType) -> Result:
+    def _run_backend(
+        self, device: DeviceType, simulation_seed: int | None = None
+    ) -> Result:
         backend = AerSimulator(method="statevector")
         if device == DeviceType.GPU:
             backend.set_options(device="GPU", cuStateVec_enable=True)
 
-        circuit_transpiled = transpile(self.circuit, backend=backend)
+        # State inspection must preserve the logical basis ordering. Higher
+        # optimization levels may absorb a trailing SWAP into the final layout,
+        # which changes the indices of the saved state vector.
+        circuit_transpiled = transpile(
+            self.circuit,
+            backend=backend,
+            optimization_level=0,
+        )
+        job = backend.run(
+            circuit_transpiled,
+            shots=1,
+            memory=True,
+            **(
+                {"seed_simulator": simulation_seed}
+                if simulation_seed is not None
+                else {}
+            ),
+        )
+        try:
+            result = job.result(timeout=MAX_SIMULATION_SECONDS)
+        except TimeoutError as exc:
+            job.cancel()
+            raise SimulationTimeoutError from exc
 
-        return backend.run(circuit_transpiled, shots=1, memory=True).result()
+        return result
 
+    def _snapshot_phase_corrections(self, result: Result) -> list[complex]:
+        """Align snapshots with each logical prefix's global-phase convention."""
+        corrections: list[complex] = []
+        logical = Statevector.from_int(0, 2**self.circuit.num_qubits)
+        for step_index in range(len(self.steps)):
+            step = self.steps[step_index]
+            if any(operation["type"] == "Measure" for operation in step):
+                corrections.extend([1] * (len(self.steps) - step_index))
+                break
+            step_circuit = QuantumCircuit(self.circuit.num_qubits)
+            circuit_builder = QiskitCircuitBuilder()
+            if len(step) == 0:
+                step_circuit.id(list(range(self.circuit.num_qubits)))
+            for operation in step:
+                circuit_builder.apply_operation(step_circuit, operation)
+
+            logical = logical.evolve(step_circuit)
+            logical_amplitudes = np.asarray(logical, dtype=np.complex128)
+            snapshot = np.asarray(
+                result.data().get(self._statevector_label(step_index)),
+                dtype=np.complex128,
+            )
+            reference = next(
+                (
+                    index
+                    for index, amplitude in enumerate(logical_amplitudes)
+                    if abs(amplitude) > 1e-12 and abs(snapshot[index]) > 1e-12
+                ),
+                None,
+            )
+            if reference is None:
+                corrections.append(1)
+                continue
+            phase = logical_amplitudes[reference] / snapshot[reference]
+            corrections.append(phase / abs(phase))
+        return corrections
+
+    @staticmethod
     def _get_statevector(
-        self,
         result: Result,
         label: str,
+        *,
+        phase_correction: complex = 1,
     ) -> dict[int, QiskitAmplitude]:
         amplitudes: npt.NDArray[np.complex128] = np.asarray(
             result.data().get(label),
             dtype=np.complex128,
         )
 
-        return dict(enumerate(amplitudes))
+        return dict(enumerate(amplitudes * phase_correction))
 
     def _extract_measurement_results(self, result: Result) -> list[MeasuredBits]:
         measured_bits: list[MeasuredBits] = [{} for _ in self.steps]
@@ -324,6 +402,9 @@ class QiskitRunner:
     @staticmethod
     def _step_has_bloch_display(step: list) -> bool:
         return any(operation["type"] == "Bloch" for operation in step)
+
+    def _statevector_label(self, step_index: int) -> str:
+        return f"{self._STATEVECTOR_LABEL_PREFIX}{step_index}"
 
     def _bloch_statevector_label(self, step_index: int) -> str:
         return f"{self._BLOCH_STATEVECTOR_LABEL_PREFIX}{step_index}"
