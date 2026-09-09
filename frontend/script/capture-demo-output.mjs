@@ -12,7 +12,7 @@ const jupyterUrl =
   "http://127.0.0.1:18888/lab/tree/qni_demo.ipynb";
 const targetSource =
   process.env.QNI_TARGET_SOURCE ??
-  "all_green_checkpoints = [";
+  "ghz8_circuit = QuantumCircuit(8)";
 const notebookName = decodeURIComponent(
   new URL(jupyterUrl).pathname.split("/").at(-1) ?? "",
 );
@@ -54,7 +54,16 @@ try {
   await page.locator(".jp-toastContainer").evaluateAll((notifications) =>
     notifications.forEach((notification) => notification.remove()),
   );
-  await viewerFrame.getByText("All checkpoints passed", { exact: true })
+  const inspectionPanel = viewerFrame.locator("#qni-inspection-panel");
+  if (!(await inspectionPanel.isVisible())) {
+    await viewerFrame.locator("#inspection-panel-toggle").click();
+  }
+  await inspectionPanel.getByText("Dominant states", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await inspectionPanel
+    .locator(".inspection-basis-label")
+    .filter({ hasText: "|11111111⟩" })
+    .first()
     .scrollIntoViewIfNeeded();
   await page.waitForTimeout(100);
   await viewerFrame.evaluate(async () => {
